@@ -4,6 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
     <title>Rainy记账</title>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.2/dist/chart.umd.min.js"></script>
     <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
     <style>
         :root {
@@ -19,6 +20,8 @@
             --warn-color: #FF8800; /* 亮橙色 */
             --danger-color: #FF6B6B; /* 红色 */
             --ai-highlight: #3D9970; /* AI 结果高亮色 */
+            --expense-color: var(--text-main); /* 支出颜色 */
+            --income-color: var(--primary); /* 收入颜色 */
         }
 
         * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; }
@@ -356,6 +359,20 @@
             background-position: right 10px center;
             background-size: 15px;
         }
+        
+        /* 账单明细顶部统计 */
+        .stats-summary {
+            display: flex; gap: 10px; margin-bottom: 20px;
+            padding: 15px; border-radius: 16px; background: white;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.05);
+        }
+        .stats-item {
+            flex: 1; text-align: center; padding: 5px;
+        }
+        .stats-label { font-size: 12px; color: var(--text-sub); margin-bottom: 5px; }
+        .stats-amount { font-size: 18px; font-weight: bold; font-family: sans-serif; }
+        .stats-expense { color: var(--expense-color); }
+        .stats-income { color: var(--income-color); }
 
         .stats-day-group { margin-bottom: 20px; }
         .stats-date-header { 
@@ -375,17 +392,41 @@
         .stat-right { text-align: right; }
         .stat-amt { font-weight: bold; font-size: 16px; }
         .stat-date { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
-        .expense-amt { color: var(--text-main); }
-        .income-amt { color: var(--primary); }
+        .expense-amt { color: var(--expense-color); }
+        .income-amt { color: var(--income-color); }
 
         /* Chips & Form */
         .form-group { margin-bottom: 20px; }
         .form-label { display: block; font-size: 13px; color: var(--text-sub); margin-bottom: 10px; }
         .chips { display: flex; flex-wrap: wrap; gap: 10px; }
-        .chip { padding: 8px 16px; border-radius: 18px; background: #F4F9F6; color: var(--text-sub); font-size: 14px; border: 1px solid transparent; cursor: pointer; }
+        .chip { 
+            padding: 8px 16px; border-radius: 18px; background: #F4F9F6; color: var(--text-sub); font-size: 14px; border: 1px solid transparent; cursor: pointer; 
+            position: relative; 
+            transition: all 0.2s;
+        }
         .chip.active { background: var(--secondary); color: var(--primary-dark); border-color: var(--primary); font-weight: bold; }
         .chip-add { border: 1px dashed var(--primary); color: var(--primary); padding: 8px 12px; }
         
+        /* 删除模式下的分类芯片样式 */
+        .chip.deletable {
+            border: 1px dashed var(--danger-color);
+            background: #FFF0F0;
+            color: var(--danger-color);
+            animation: shake 0.5s infinite;
+        }
+        .chip.deletable .delete-x {
+             position: absolute; top: -5px; right: -5px; width: 14px; height: 14px; border-radius: 50%;
+             background: var(--danger-color); color: white; font-size: 10px;
+             display: flex; align-items: center; justify-content: center;
+             cursor: pointer; z-index: 5;
+        }
+        @keyframes shake {
+            0%, 100% { transform: translateX(0); }
+            20%, 60% { transform: translateX(-2px); }
+            40%, 80% { transform: translateX(2px); }
+        }
+
+
         .amount-input { width: 100%; border: none; border-bottom: 1px solid #EEE; font-size: 40px; font-weight: bold; color: var(--text-main); padding: 5px 0; font-family: sans-serif; }
         .note-input { width: 100%; background: #F8F8F8; border: none; padding: 14px; border-radius: 12px; color: var(--text-main); font-size: 14px; }
         .btn-block { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: bold; margin-top: 10px; cursor: pointer; }
@@ -416,6 +457,13 @@
             flex: 1;
             min-width: 80px;
         }
+
+        /* Chart Modal Style */
+        .chart-container-wrapper { 
+            padding: 15px; background: #FAFCFB; border-radius: 16px; margin-bottom: 20px;
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .chart-title { font-weight: bold; font-size: 16px; color: var(--text-main); margin-bottom: 10px; text-align: center; }
 
         /* Animation */
         @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
@@ -488,7 +536,7 @@
             <div class="form-group"><label class="form-label">账户</label><div class="chips" id="account-chips"></div></div>
             <div class="form-group">
                 <label class="form-label">记账选项</label>
-                <div class="chips">
+                <div class="chips" id="option-balance">
                     <div class="chip active" data-value="true" onclick="app.toggleChip(this, true, 'option-balance')">扣减/增加余额</div>
                     <div class="chip" data-value="false" onclick="app.toggleChip(this, true, 'option-balance')">仅记账(不扣余额)</div>
                 </div>
@@ -501,17 +549,51 @@
     <div class="modal modal-fullscreen" id="stats-modal">
         <div class="modal-content">
             <div class="modal-header">
-                <span class="modal-title">账单明细</span>
+                <span style="display: flex; align-items: center;">
+                    <span class="modal-title">账单明细</span>
+                    <i class="fa-solid fa-chart-pie settings-btn" style="color: var(--primary-dark);" onclick="app.openChartModal()"></i>
+                </span>
                 <span class="close-btn" onclick="app.closeModal('stats-modal')"><i class="fa-solid fa-xmark"></i></span>
             </div>
             <div class="stats-month-selector">
                 <span class="modal-title" id="stats-title-month"></span>
                 <select id="month-selector" onchange="app.renderStatsList(this.value)"></select>
             </div>
+            
+            <div class="stats-summary" id="stats-summary-container">
+                </div>
+            
             <div class="stats-scroll-area" id="stats-list-container"></div>
         </div>
     </div>
+    
+    <div class="modal modal-fullscreen" id="chart-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="chart-title">本月分类占比</span>
+                <span class="close-btn" onclick="app.closeModal('chart-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            
+            <div style="flex: 1; overflow-y: auto;">
+                <div class="chart-container-wrapper">
+                    <div class="chart-title">支出分类占比</div>
+                    <div id="expense-chart-container" style="max-height: 400px;">
+                        <canvas id="expense-chart"></canvas>
+                    </div>
+                </div>
 
+                <div class="chart-container-wrapper">
+                    <div class="chart-title">收入分类占比</div>
+                    <div id="income-chart-container" style="max-height: 400px;">
+                        <canvas id="income-chart"></canvas>
+                    </div>
+                </div>
+                <div style="text-align:center; padding: 20px 0; color: var(--text-sub); font-size: 14px;">
+                     数据基于 <span id="chart-month-display"></span>
+                </div>
+            </div>
+        </div>
+    </div>
     <div class="modal" id="settings-modal">
         <div class="modal-content">
             <div class="modal-header">
@@ -647,6 +729,8 @@
                         income: ['工资', '生活费', '红包', '兼职']
                     };
                     
+                    this.chartInstances = {}; // 用于存储 Chart.js 实例
+                    
                     this.checkMonthlyReset();
                     this.initUI();
                     
@@ -675,6 +759,9 @@
                 if (!this.data.alertThreshold) this.data.alertThreshold = 10; // 默认预警值
                 if (!this.data.quickReplies) this.data.quickReplies = [];
                 if (!this.data.monthlyData) this.data.monthlyData = {}; 
+
+                // 确保默认分类列表始终是完整的，但实际渲染时要根据用户设置排除掉
+                this.data.deletedDefaultCategories = this.data.deletedDefaultCategories || { expense: [], income: [] };
 
                 if (this.data.chatHistory.length === 0) {
                     // 修正：初始消息图标使用 Font Awesome
@@ -925,6 +1012,12 @@
                     this.openAddAccountModal();
                     return;
                 }
+                
+                // 获取当前可见的支出和收入分类，用于指导AI
+                const visibleExpenseCats = [...this.defaultCats.expense.filter(cat => !this.data.deletedDefaultCategories.expense.includes(cat)), ...this.data.customCategories.expense];
+                const visibleIncomeCats = [...this.defaultCats.income.filter(cat => !this.data.deletedDefaultCategories.income.includes(cat)), ...this.data.customCategories.income];
+                const allVisibleCats = [...visibleExpenseCats, ...visibleIncomeCats].join(',');
+
 
                 // 1. 添加用户消息
                 const userMsg = { role: 'user', text: text, id: Date.now() + Math.random() };
@@ -941,7 +1034,7 @@
 
                 try {
                     // 3. 尝试解析为账单
-                    const results = await this.callAI(text);
+                    const results = await this.callAI(text, allVisibleCats);
                     this.removeLoading(loadingId);
                     
                     if (results && results.length > 0) {
@@ -987,20 +1080,19 @@
                 }
             }
 
-            async callAI(userText) {
+            async callAI(userText, allVisibleCats) {
                 const now = new Date();
                 const timeStr = `${now.getHours()}:${now.getMinutes()}`;
                 const accountNames = this.data.accounts.map(a => a.name).join(',');
                 const defaultAcc = this.data.defaultAccount || (this.data.accounts[0] ? this.data.accounts[0].name : 'Unknown');
-                const allCats = [...this.defaultCats.expense, ...this.data.customCategories.expense, 
-                                 ...this.defaultCats.income, ...this.data.customCategories.income].join(',');
+                
 
                 const prompt = `
                 Role: Bookkeeping Parser.
                 Time: ${timeStr}.
                 User Accounts: ${accountNames}.
                 Default Account: ${defaultAcc}.
-                Allowed Categories: ${allCats}.
+                Allowed Categories: ${allVisibleCats}.
                 Task: Parse input "${userText}" into JSON array. If no clear transaction is found, return empty JSON array [].
                 Rules:
                 1. Infer category from Allowed Categories if possible.
@@ -1105,7 +1197,7 @@
                         let cardDatas = Array.isArray(msg.cardData) ? msg.cardData : [msg.cardData];
                         
                         const cardsHtml = cardDatas.map((item, index) => {
-                            const typeColor = item.type==='expense' ? 'var(--text-main)' : 'var(--primary-dark)';
+                            const typeColor = item.type==='expense' ? 'var(--expense-color)' : 'var(--income-color)';
                             const sign = item.type==='expense' ? '-' : '+';
                             const displayAmount = Math.abs(parseFloat(item.amount)).toFixed(2);
                             
@@ -1116,7 +1208,7 @@
                                 </div>` : '';
                             
                             return `
-                                <div class="bill-card" style="margin-top:10px; border-left: 5px solid ${item.type==='expense'?'var(--text-main)':'var(--primary)'}">
+                                <div class="bill-card" style="margin-top:10px; border-left: 5px solid ${item.type==='expense'?'var(--expense-color)':'var(--income-color)'}">
                                     <div class="bill-row"><span class="bill-label">分类</span><span class="bill-value">${item.category}</span></div>
                                     <div class="bill-row"><span class="bill-label">金额</span><span class="bill-value" style="color:${typeColor}">${sign} ${displayAmount}</span></div>
                                     <div class="bill-row"><span class="bill-label">账户</span><span class="bill-value">${item.account}</span></div>
@@ -1149,8 +1241,9 @@
                         
                         // 确保按钮点击正常（防止长按事件阻止）
                         div.querySelectorAll('.btn-mini').forEach(btn => {
-                            btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
-                            btn.addEventListener('mousedown', (e) => e.stopPropagation(), { passive: true });
+                            // 修复：阻止按钮点击事件冒泡到 bubble 的长按/拖动逻辑
+                            btn.addEventListener('touchstart', (e) => { e.stopPropagation(); this.cancelLongPress(); }, { passive: true });
+                            btn.addEventListener('mousedown', (e) => { e.stopPropagation(); this.cancelLongPress(); }, { passive: true });
                         });
                     }
                     
@@ -1171,6 +1264,10 @@
                     const touch = e.touches[0];
                     this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
                     e.currentTarget.addEventListener('touchmove', this.checkMovement, { passive: false });
+                    e.stopPropagation(); // 阻止向上冒泡
+                } else if (e.type === 'mousedown') {
+                    // 阻止默认右键菜单
+                    e.preventDefault();
                 }
                 
                 this.longPressTimer = setTimeout(() => {
@@ -1231,7 +1328,7 @@
                         this.cancelLongPress();
                         e.currentTarget.removeEventListener('touchmove', this.checkMovement);
                     } else {
-                        // 在小范围移动时阻止页面滚动，以保持长按
+                        // 在小范围移动时阻止页面滚动, 但允许元素自身的事件继续传递
                         e.preventDefault(); 
                     }
                 }
@@ -1336,9 +1433,12 @@
                     
                     if (userMsgText) {
                          userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === userMsgText);
-                    } else if (msg.text.startsWith('快捷记账:')) { 
-                        userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.text.replace('快捷记账已确认：', '快捷记账: '));
-                    } else if (msg.text === '手动记账') { 
+                    } else if (msg.text.startsWith('快捷记账已确认：')) { 
+                        // 修正：快捷记账的用户消息
+                        const originalText = msg.text.replace('快捷记账已确认：', '快捷记账: ');
+                        userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === originalText);
+                    } else if (msg.text === '手动记账已确认：') { 
+                        // 修正：手动记账的用户消息
                         userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === '手动记账');
                     }
 
@@ -1363,12 +1463,14 @@
                 } else { // revert
                     if (type === 'expense') acc.balance += val; else acc.balance -= val;
                 }
+                acc.balance = parseFloat(acc.balance.toFixed(2)); // 保持精度
             }
 
             // --- Manual Modal & Multi-Edit Logic ---
             currentMultiEditData = null; // 存储当前正在编辑的多个子账单数组
             currentMultiEditIndex = 0;   // 当前正在编辑的子账单索引
             currentEditMsgId = null;     // 原始 AI 消息 ID
+            isDeletingCategory = false;  // 分类删除模式开关
             
             openManualModal(editMsgId = null) {
                 const modal = document.getElementById('entry-modal');
@@ -1376,6 +1478,7 @@
                 
                 modal.classList.add('active');
                 this.currentEditId = editMsgId;
+                this.isDeletingCategory = false; // 进入时默认关闭删除模式
                 
                 let data = { type: 'expense', amount: 0.00, note: '', category: '', account: this.data.defaultAccount || '', noBalanceUpdate: false };
                 
@@ -1401,10 +1504,17 @@
                 
                 // 2. 加载数据
                 if (this.currentMultiEditData && this.currentMultiEditData.length > 0) {
-                     // 确保在加载前设置了正确的类型，防止类型芯片错乱
-                     this.setFormType(this.currentMultiEditData[this.currentMultiEditIndex].type);
-                     this.loadEntryData(this.currentMultiEditData[this.currentMultiEditIndex]);
+                     const initData = this.currentMultiEditData[this.currentMultiEditIndex];
+                     this.setFormType(initData.type, initData.category, initData.noBalanceUpdate);
+                     this.loadEntryData(initData);
                 } else {
+                     // 修复 Bug：首次打开时强制初始化为 'expense' 类型和默认分类
+                     const defaultType = 'expense';
+                     const visibleDefaultCats = this.defaultCats[defaultType].filter(cat => !this.data.deletedDefaultCategories[defaultType].includes(cat));
+                     const defaultCat = visibleDefaultCats[0] || '其他';
+                     
+                     data.category = defaultCat; // 设置默认分类
+                     this.setFormType(defaultType, defaultCat, false); // 强制渲染默认分类
                      this.loadEntryData(data);
                 }
                 
@@ -1417,14 +1527,13 @@
             loadEntryData(data) {
                 data.amount = parseFloat(data.amount) || 0;
                 
-                // 修正 Bug：确保设置正确的类型
-                this.setFormType(data.type || 'expense');
+                // 注意： setFormType 已经在 openManualModal 中处理了类型切换和 Category/Balance chips 的渲染
                 
                 document.getElementById('form-amount').value = data.amount.toFixed(2);
                 document.getElementById('form-note').value = data.note || '';
                 
-                // 设置不扣余额选项
-                const balanceChips = document.querySelector('#entry-modal .form-group .chips').children;
+                // 设置不扣余额选项 (Bug 1 修复)
+                const balanceChips = document.getElementById('option-balance').children;
                 if(data.noBalanceUpdate) {
                     balanceChips[0].classList.remove('active');
                     balanceChips[1].classList.add('active');
@@ -1433,8 +1542,7 @@
                     balanceChips[1].classList.remove('active');
                 }
                 
-                // 渲染分类和账户，并确保选中项是当前数据中的值
-                this.renderCategories(data.type || 'expense', data.category);
+                // 渲染账户，并确保选中项是当前数据中的值
                 const accNames = this.data.accounts.map(a=>a.name);
                 this.renderChips('account-chips', accNames, data.account);
                 
@@ -1466,7 +1574,7 @@
                     
                     // 3. 确保在加载前设置了正确的类型，防止类型芯片错乱
                     const nextData = this.currentMultiEditData[newIndex];
-                    this.setFormType(nextData.type);
+                    this.setFormType(nextData.type, nextData.category, nextData.noBalanceUpdate);
                     
                     this.loadEntryData(nextData);
                 }
@@ -1481,7 +1589,7 @@
                 const note = document.getElementById('form-note').value;
                 const catEl = document.querySelector('#category-chips .active');
                 const accEl = document.querySelector('#account-chips .active');
-                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+                const noBalanceUpdate = document.getElementById('option-balance').children[1].classList.contains('active');
                 
                 const currentData = this.currentMultiEditData[this.currentMultiEditIndex];
                 
@@ -1496,8 +1604,8 @@
                 };
             }
 
-
-            setFormType(type) {
+            // 核心修复 Bug：确保类型切换时 Category chips 被正确地完全重绘
+            setFormType(type, activeCategory = null, noBalanceUpdate = null) {
                 const chips = document.getElementById('type-select').children;
                 
                 chips[0].classList.remove('active');
@@ -1509,58 +1617,231 @@
                     chips[1].classList.add('active');
                 }
 
-                // 重新渲染分类芯片
-                // 如果是多笔编辑状态，先尝试保存当前表单的类型，以确保切换类型后加载正确的分类列表
-                if (this.currentMultiEditData) {
-                    // 当从 '支出' 切换到 '收入' 时，必须重新渲染芯片，但此时分类可能不同。
-                    // 为了保证修改流程的连贯性，这里我们只在非多笔编辑或手动强制切换类型时才重新渲染分类
-                    // 但在多笔编辑中，类型是数据驱动的，loadEntryData 会调用这个函数，所以要确保分类也根据数据类型加载
-                    const activeCat = this.currentMultiEditData 
-                        ? this.currentMultiEditData[this.currentMultiEditIndex].category 
-                        : document.querySelector('#category-chips .active')?.innerText;
-                    this.renderCategories(type, activeCat);
-                } else {
-                    const activeCat = document.querySelector('#category-chips .active')?.innerText;
-                    this.renderCategories(type, activeCat);
+                // 获取当前类型的可见分类
+                const visibleDefaultCats = this.defaultCats[type].filter(cat => !this.data.deletedDefaultCategories[type].includes(cat));
+                const allVisibleCats = [...visibleDefaultCats, ...this.data.customCategories[type]];
+
+                // 确定要激活的分类
+                let finalActiveCategory = activeCategory;
+                if (!finalActiveCategory || !allVisibleCats.includes(finalActiveCategory)) {
+                    // 如果传入的分类为空，或在当前可见分类中找不到，则选择第一个可见分类
+                    finalActiveCategory = allVisibleCats[0] || null;
+                }
+                
+                // 强制重新渲染分类芯片，并带入活动分类
+                this.renderCategories(type, finalActiveCategory);
+                
+                // 修复 Bug：同时处理不扣余额选项的同步（针对从外部如 statsModal 调用的情况）
+                if (noBalanceUpdate !== null) {
+                    const balanceChips = document.getElementById('option-balance').children;
+                    if (noBalanceUpdate) {
+                        balanceChips[0].classList.remove('active');
+                        balanceChips[1].classList.add('active');
+                    } else {
+                        balanceChips[0].classList.add('active');
+                        balanceChips[1].classList.remove('active');
+                    }
                 }
             }
 
             renderCategories(type, activeCat = null) {
                 const container = document.getElementById('category-chips');
                 container.innerHTML = '';
-                const list = [...this.defaultCats[type], ...this.data.customCategories[type]];
                 
+                // 过滤掉已被标记删除的默认分类
+                const visibleDefaultCats = this.defaultCats[type].filter(cat => !this.data.deletedDefaultCategories[type].includes(cat));
+                const list = [...visibleDefaultCats, ...this.data.customCategories[type]];
+                
+                // 确保活动分类存在于列表中，如果不存在且不是被隐藏的默认分类，则暂时加到列表最前面
                 if (!activeCat && list.length > 0) activeCat = list[0];
-                if (activeCat && !list.includes(activeCat)) list.unshift(activeCat); 
+                if (activeCat && !list.includes(activeCat)) {
+                     // 检查 activeCat 是否是旧的默认分类（已被删除）
+                     const isOldDefaultCat = this.defaultCats[type].includes(activeCat) && this.data.deletedDefaultCategories[type].includes(activeCat);
+                     if (!isOldDefaultCat) {
+                        list.unshift(activeCat); 
+                     }
+                } 
 
                 list.forEach(cat => {
+                    const isDefault = this.defaultCats[type].includes(cat);
+                    const isCustom = this.data.customCategories[type].includes(cat);
+                    
                     const chip = document.createElement('div');
                     chip.className = `chip ${cat === activeCat ? 'active' : ''}`;
                     chip.innerText = cat;
-                    chip.onclick = () => {
-                        Array.from(container.children).forEach(c => c.classList.remove('active'));
-                        chip.classList.add('active');
-                    };
+                    
+                    const canDelete = isCustom || isDefault; // 现在默认分类也可以被删除
+                    
+                    if (canDelete) {
+                        chip.addEventListener('contextmenu', (e) => this.startCategoryDeleteMode(e, type, cat)); // 长按/右键
+                        chip.addEventListener('touchstart', (e) => this.startCategoryLongPress(e, type, cat), { passive: false });
+                        chip.addEventListener('touchend', this.cancelCategoryLongPress, false);
+                        chip.addEventListener('mousedown', (e) => this.startCategoryLongPress(e, type, cat), false);
+                        chip.addEventListener('mouseup', this.cancelCategoryLongPress, false);
+                        
+                        // 修复：阻止默认行为，防止长按时触发点击
+                        chip.addEventListener('click', (e) => { 
+                            if (this.categoryLongPressTimer) {
+                                e.stopPropagation();
+                                e.preventDefault();
+                            }
+                        }, false);
+
+                    }
+
+                    if (this.isDeletingCategory && canDelete) {
+                        chip.classList.add('deletable');
+                        const deleteX = document.createElement('div');
+                        deleteX.className = 'delete-x';
+                        deleteX.innerHTML = '<i class="fa-solid fa-xmark"></i>';
+                        deleteX.onclick = (e) => { e.stopPropagation(); this.deleteCategory(type, cat, activeCat); };
+                        chip.appendChild(deleteX);
+                        chip.onclick = (e) => { e.stopPropagation(); }; // 删除模式下点击无效
+                    } else {
+                        chip.onclick = () => {
+                            if(this.isDeletingCategory) return; // 退出删除模式前，点击无效
+                            Array.from(container.children).forEach(c => c.classList.remove('active'));
+                            chip.classList.add('active');
+                        };
+                    }
                     container.appendChild(chip);
                 });
 
                 const addChip = document.createElement('div');
                 addChip.className = 'chip chip-add';
                 addChip.innerHTML = '<i class="fa-solid fa-plus"></i>';
-                addChip.onclick = () => this.addCustomCategory(type);
+                addChip.onclick = () => {
+                    if (this.isDeletingCategory) {
+                        this.isDeletingCategory = false;
+                        this.renderCategories(type, activeCat); // 退出删除模式
+                    } else {
+                        this.addCustomCategory(type);
+                    }
+                };
                 container.appendChild(addChip);
+                
+                // 删除模式退出按钮
+                if (this.isDeletingCategory) {
+                    const exitChip = document.createElement('div');
+                    exitChip.className = 'chip';
+                    exitChip.innerText = '完成';
+                    exitChip.style.background = '#EEE';
+                    exitChip.style.color = 'var(--text-sub)';
+                    exitChip.onclick = () => {
+                        this.isDeletingCategory = false;
+                        this.renderCategories(type, activeCat); 
+                    };
+                    container.appendChild(exitChip);
+                }
+            }
+            
+            // 分类长按删除模式
+            categoryLongPressTimer = null;
+            
+            startCategoryLongPress(e, type, cat) {
+                this.cancelCategoryLongPress(); 
+                
+                if (this.isDeletingCategory) return;
+
+                if (e.type === 'touchstart') {
+                    // 阻止默认行为只用于启动长按计时
+                    const touch = e.touches[0];
+                    this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
+                    e.currentTarget.addEventListener('touchmove', this.checkCategoryMovement, { passive: false });
+                    e.stopPropagation(); // 阻止向上冒泡
+                }
+                
+                this.categoryLongPressTimer = setTimeout(() => {
+                    this.isDeletingCategory = true;
+                    this.renderCategories(type, cat);
+                    this.categoryLongPressTimer = null;
+                    if (e.type === 'touchstart') {
+                        e.currentTarget.removeEventListener('touchmove', this.checkCategoryMovement);
+                    }
+                }, 700); 
+                
+                if (e.type === 'contextmenu' || e.type === 'mousedown') {
+                     e.preventDefault(); 
+                     e.stopPropagation(); 
+                }
+            }
+            
+            checkCategoryMovement = (e) => {
+                const touch = e.touches[0];
+                const maxMovement = 10; 
+                
+                if (this.categoryLongPressTimer) {
+                    const deltaX = Math.abs(touch.clientX - this.longPressTouchStart.x);
+                    const deltaY = Math.abs(touch.clientY - this.longPressTouchStart.y);
+                    
+                    if (deltaX > maxMovement || deltaY > maxMovement) {
+                        this.cancelCategoryLongPress();
+                        e.currentTarget.removeEventListener('touchmove', this.checkCategoryMovement);
+                    } else {
+                        e.preventDefault(); 
+                    }
+                }
+            }
+
+            cancelCategoryLongPress = () => {
+                clearTimeout(this.categoryLongPressTimer);
+                this.categoryLongPressTimer = null;
+            }
+
+            async deleteCategory(type, cat, activeCat) {
+                const isDefault = this.defaultCats[type].includes(cat);
+                
+                let confirmMessage = `确定删除分类 [${cat}] 吗？\n(已记账的记录不会受影响)`;
+                if (isDefault) {
+                     confirmMessage = `确定隐藏默认分类 [${cat}] 吗？\n(未来您仍然可以通过添加同名分类来恢复它)`;
+                }
+                
+                const confirmed = await this.showConfirm(confirmMessage, true);
+                if (confirmed) {
+                    if (isDefault) {
+                        // 标记默认分类为已删除 (隐藏)
+                        if (!this.data.deletedDefaultCategories[type].includes(cat)) {
+                             this.data.deletedDefaultCategories[type].push(cat);
+                        }
+                    } else {
+                        // 删除自定义分类
+                        this.data.customCategories[type] = this.data.customCategories[type].filter(c => c !== cat);
+                    }
+                    
+                    this.saveData();
+                    
+                    // 如果删除的是当前选中的，则重置选中项
+                    const visibleDefaultCats = this.defaultCats[type].filter(c => !this.data.deletedDefaultCategories[type].includes(c));
+                    let newActiveCat = activeCat === cat ? (this.data.customCategories[type][0] || visibleDefaultCats[0] || '其他') : activeCat;
+                    this.renderCategories(type, newActiveCat);
+                }
             }
 
             async addCustomCategory(type) {
                 const name = await this.showPrompt("新建分类", "请输入分类名称：");
                 if (name) {
                     const categoryList = this.data.customCategories[type];
-                    if (!this.defaultCats[type].includes(name) && !categoryList.includes(name)) {
+                    const isDefault = this.defaultCats[type].includes(name);
+
+                    if (isDefault) {
+                        // 如果用户输入了已隐藏的默认分类名，则恢复它
+                        const index = this.data.deletedDefaultCategories[type].indexOf(name);
+                        if (index !== -1) {
+                            this.data.deletedDefaultCategories[type].splice(index, 1);
+                            this.saveData();
+                            this.renderCategories(type, name);
+                            return;
+                        } else {
+                            // 默认分类已存在且可见
+                            return this.showAlert("该默认分类已存在！");
+                        }
+                    } else if (categoryList.includes(name)) {
+                        return this.showAlert("该自定义分类已存在！");
+                    } else {
+                        // 添加新自定义分类
                         categoryList.push(name);
                         this.saveData();
                         this.renderCategories(type, name);
-                    } else if (this.defaultCats[type].includes(name) || categoryList.includes(name)) {
-                        this.showAlert("该分类已存在！");
                     }
                 }
             }
@@ -1600,7 +1881,7 @@
                 const note = document.getElementById('form-note').value;
                 const catEl = document.querySelector('#category-chips .active');
                 const accEl = document.querySelector('#account-chips .active');
-                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+                const noBalanceUpdate = document.getElementById('option-balance').children[1].classList.contains('active');
 
                 if (!amount || amount <= 0) return this.showAlert('请输入有效金额');
                 if (!accEl) {
@@ -1635,7 +1916,7 @@
                         // 3. 更新聊天记录
                         msg.cardData = newData; 
                         msg.transactionId = newTransactionId;
-                        msg.text = '已修改为：'; 
+                        msg.text = '手动记账已确认：'; 
                         msg.status = 'confirmed'; 
                     }
                 } else {
@@ -1695,38 +1976,90 @@
             }
 
 
-            // --- Quick Reply Logic ---
-            renderQuickReplies() {
-                const container = document.getElementById('quick-reply-area');
-                container.innerHTML = '';
-                
-                // 渲染所有快捷指令（不包括新建按钮，新建按钮放在外层）
-                const groupedQR = this.data.quickReplies.reduce((acc, qr) => {
-                    (acc[qr.category] = acc[qr.category] || []).push(qr);
-                    return acc;
-                }, {});
+// --- Quick Reply Logic ---
+renderQuickReplies() {
+    const container = document.getElementById('quick-reply-area');
+    container.innerHTML = '';
+    
+    // 渲染所有快捷指令（不包括新建按钮，新建按钮放在外层）
+    const groupedQR = this.data.quickReplies.reduce((acc, qr) => {
+        (acc[qr.category] = acc[qr.category] || []).push(qr);
+        return acc;
+    }, {});
 
-                Object.entries(groupedQR).forEach(([category, list]) => {
-                    const chip = document.createElement('div');
-                    chip.className = 'qr-chip';
-                    
-                    if (list.length === 1) {
-                        chip.innerText = list[0].name;
-                        chip.onclick = () => this.executeQuickReply(list[0]);
-                    } else {
-                        chip.innerText = category;
-                        chip.onclick = () => this.openQuickReplyGroupModal(category, list);
-                    }
-                    container.appendChild(chip);
-                });
-                
-                // 添加新建按钮
-                const addBtn = document.createElement('div');
-                addBtn.className = 'qr-chip qr-add';
-                addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 新建快捷指令';
-                addBtn.onclick = () => this.openQuickReplyModal();
-                container.appendChild(addBtn);
-            }
+    Object.entries(groupedQR).forEach(([category, list]) => {
+        const chip = document.createElement('div');
+        chip.className = 'qr-chip';
+        
+        if (list.length === 1) {
+            const qr = list[0];
+            chip.innerText = qr.name;
+            
+            // 绑定点击事件，用于立即执行记账（修复重点）
+            chip.onclick = (e) => { 
+                e.stopPropagation(); 
+                // 仅在没有长按计时器（即是短按）时才执行记账
+                if (!this.longPressTimer) {
+                   this.executeQuickReply(qr); 
+                }
+            }; 
+            
+            // 绑定长按/右键菜单事件
+            chip.oncontextmenu = (e) => { e.preventDefault(); this.showQRContextMenu(e, qr); }; 
+            // 修复：触摸事件只用于启动计时器，不阻止默认行为
+            chip.addEventListener('touchstart', (e) => this.startQRLongPress(e, qr), { passive: true });
+            chip.addEventListener('touchend', this.cancelLongPress, false);
+            // 鼠标事件用于兼容非触屏设备
+            chip.addEventListener('mousedown', (e) => this.startQRLongPress(e, qr), { passive: true });
+            chip.addEventListener('mouseup', this.cancelLongPress, false);
+
+
+        } else {
+            chip.innerText = category;
+            chip.onclick = () => this.openQuickReplyGroupModal(category, list);
+        }
+        container.appendChild(chip);
+    });
+    
+    // 添加新建按钮
+    const addBtn = document.createElement('div');
+    addBtn.className = 'qr-chip qr-add';
+    addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 新建快捷指令';
+    addBtn.onclick = () => this.openQuickReplyModal();
+    container.appendChild(addBtn);
+}
+
+            
+// 快捷指令长按/右键菜单 (适用于非分组的单个快捷指令)
+startQRLongPress(e, qr) {
+    this.cancelLongPress(); 
+    
+    // 鼠标右键事件直接触发菜单
+    if (e.type === 'contextmenu') {
+        e.preventDefault();
+        this.showQRContextMenu(e, qr);
+        return;
+    }
+    
+    // 仅记录起始位置
+    if (e.type === 'touchstart') {
+        const touch = e.touches[0];
+        this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
+    }
+    
+    // 启动长按计时器，如果时间到，就显示菜单并阻止后续的点击行为
+    this.longPressTimer = setTimeout(() => {
+        this.showQRContextMenu(e, qr);
+        this.longPressTimer = null;
+        
+        // 如果是触屏事件，确保取消长按前的点击/释放行为被忽略（虽然 passive: true 但以防万一）
+        if (e.type === 'touchstart') {
+             // 触摸移动检测必须移除，否则会干扰页面的正常滚动
+             e.currentTarget.removeEventListener('touchmove', this.checkMovement); 
+        }
+    }, 700); 
+}
+
 
             openQuickReplyModal(qr = null) {
                 this.currentEditQR = qr;
@@ -1758,7 +2091,10 @@
                 accSelector.innerHTML = '';
 
                 const selectedType = document.querySelector('#qr-type-select .active').getAttribute('data-type') || 'expense';
-                const allCats = [...this.defaultCats[selectedType], ...this.data.customCategories[selectedType]];
+                
+                // 使用可见分类
+                const visibleDefaultCats = this.defaultCats[selectedType].filter(cat => !this.data.deletedDefaultCategories[selectedType].includes(cat));
+                const allCats = [...visibleDefaultCats, ...this.data.customCategories[selectedType]];
                 
                 // Category Selector
                 allCats.forEach(cat => {
@@ -1832,6 +2168,7 @@
                 };
 
                 this.addHistory({ role: 'user', text: `快捷记账: ${qr.name}` });
+                // 使用 cardData 中的 note 作为 AI 消息的 userText，以便撤销时能找到用户消息
                 this.addHistory({ role: 'ai', text: '快捷记账已确认：', cardData: cardData, status: 'confirmed', userText: `快捷记账: ${qr.name}` }); 
                 this.confirmCard(this.data.chatHistory[this.data.chatHistory.length-1].id);
             }
@@ -1876,12 +2213,15 @@
                     cancelText: "取消",
                     confirmText: "编辑",
                 }).then(result => {
-                    if(result === true) {
+                    // 如果在分组 Modal 内，先关闭分组 Modal
+                    if (document.getElementById('qr-group-modal').classList.contains('active')) {
                         this.closeModal('qr-group-modal');
+                    }
+                    
+                    if(result === true) {
                         this.openQuickReplyModal(qr);
                     } else if (result === 'delete') {
                         this.deleteQuickReply(qr.id);
-                        this.closeModal('qr-group-modal');
                     }
                 });
             }
@@ -1997,6 +2337,10 @@
                     allMonths.add(monthKey);
                 });
                 
+                const now = new Date();
+                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                allMonths.add(currentMonthKey); // 确保当前月份在列表中，即使没有交易
+
                 const sortedMonths = Array.from(allMonths).sort().reverse();
                 
                 sortedMonths.forEach(monthKey => {
@@ -2009,7 +2353,9 @@
 
             renderStatsList(monthKey) {
                 const container = document.getElementById('stats-list-container');
+                const summaryContainer = document.getElementById('stats-summary-container');
                 container.innerHTML = '';
+                summaryContainer.innerHTML = '';
                 
                 document.getElementById('stats-title-month').innerText = monthKey.replace('-', '年') + '月';
 
@@ -2018,6 +2364,25 @@
                     const tMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
                     return tMonthKey === monthKey;
                 }).sort((a, b) => new Date(b.date) - new Date(a.date)); 
+                
+                // 1. 计算总收支
+                const totalExpense = filteredList
+                    .filter(t => t.type === 'expense')
+                    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+                const totalIncome = filteredList
+                    .filter(t => t.type === 'income')
+                    .reduce((sum, t) => sum + parseFloat(t.amount), 0);
+                    
+                summaryContainer.innerHTML = `
+                    <div class="stats-item">
+                        <div class="stats-label">本月总支出</div>
+                        <div class="stats-amount stats-expense">- ${totalExpense.toFixed(2)}</div>
+                    </div>
+                    <div class="stats-item" style="border-left: 1px solid #EEE;">
+                        <div class="stats-label">本月总收入</div>
+                        <div class="stats-amount stats-income">+ ${totalIncome.toFixed(2)}</div>
+                    </div>
+                `;
 
                 if (filteredList.length === 0) {
                     container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">本月暂无记录</div>';
@@ -2049,11 +2414,14 @@
                         div.className = 'stat-item';
                         div.setAttribute('data-tid', t.id);
                         
+                        // 长按/右键菜单事件
                         div.addEventListener('mousedown', (e) => this.startLongPress(e, t), false);
                         div.addEventListener('touchstart', (e) => this.startLongPress(e, t), { passive: false });
                         
                         div.addEventListener('mouseup', this.cancelLongPress, false);
                         div.addEventListener('touchend', this.cancelLongPress, false);
+                        
+                        div.oncontextmenu = (e) => { e.preventDefault(); this.showStatsContextMenu(e, t); };
 
 
                         div.innerHTML = `
@@ -2086,6 +2454,9 @@
                     const touch = e.touches[0];
                     this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
                     e.currentTarget.addEventListener('touchmove', this.checkMovement, { passive: false });
+                    e.stopPropagation(); // 阻止向上冒泡
+                } else if (e.type === 'mousedown') {
+                     e.preventDefault();
                 }
                 
                 this.longPressTimer = setTimeout(() => {
@@ -2095,6 +2466,11 @@
                         e.currentTarget.removeEventListener('touchmove', this.checkMovement);
                     }
                 }, 700); 
+                
+                if (e.type === 'contextmenu') {
+                     e.preventDefault(); 
+                     e.stopPropagation(); 
+                }
             }
             
             checkMovement = (e) => {
@@ -2143,6 +2519,7 @@
                     const confirmed = await this.showConfirm("确定要删除这条账单吗？此操作会影响账户余额。", true);
                     if (confirmed) {
                         this.deleteTransaction(transactionId, transaction.account, transaction.amount, transaction.type, transaction.noBalanceUpdate);
+                        // 重新渲染当前月份的列表
                         this.renderStatsList(document.getElementById('month-selector').value); 
                     }
                 }
@@ -2158,10 +2535,14 @@
                 document.getElementById('entry-title').innerText = "修改账单";
                 this.currentEditTransactionId = transactionId;
                 
-                this.currentMultiEditData = [transaction];
+                // Bug 1 修复：直接使用 transaction 对象的 noBalanceUpdate 属性来初始化表单
+                this.currentMultiEditData = [{...transaction}]; 
                 this.currentMultiEditIndex = 0;
                 
-                this.loadEntryData(transaction);
+                this.loadEntryData(this.currentMultiEditData[0]);
+                
+                // 确保没有导航栏
+                document.getElementById('entry-nav-controls').style.display = 'none';
                 
                 const saveBtn = document.querySelector('#entry-modal .btn-block');
                 saveBtn.onclick = () => this.saveEditedTransaction();
@@ -2177,7 +2558,7 @@
                 const note = document.getElementById('form-note').value;
                 const catEl = document.querySelector('#category-chips .active');
                 const accEl = document.querySelector('#account-chips .active');
-                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+                const noBalanceUpdate = document.getElementById('option-balance').children[1].classList.contains('active');
 
                 if (!amount || amount <= 0) return this.showAlert('请输入有效金额');
                 if (!accEl) return this.showAlert('请选择账户');
@@ -2245,9 +2626,9 @@
                         let userMsgIndex = -1;
                         if (msg.userText) { 
                             userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.userText);
-                        } else if (msg.text.startsWith('快捷记账:')) {
+                        } else if (msg.text.startsWith('快捷记账已确认：')) {
                             userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.text.replace('快捷记账已确认：', '快捷记账: '));
-                        } else if (msg.text === '手动记账') {
+                        } else if (msg.text === '手动记账已确认：') {
                             userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === '手动记账');
                         }
                         
@@ -2261,13 +2642,163 @@
                 this.updateHeader();
                 this.renderChatHistory();
             }
+            
+            // --- Chart Modal Logic ---
+            openChartModal() {
+                const modal = document.getElementById('chart-modal');
+                const monthKey = document.getElementById('month-selector').value;
+                document.getElementById('chart-month-display').innerText = monthKey.replace('-', '年') + '月';
+                
+                const filteredList = this.data.transactions.filter(t => {
+                    const date = new Date(t.date);
+                    const tMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    return tMonthKey === monthKey;
+                });
+                
+                // 确保每次打开都重新创建 canvas 元素
+                this.resetChartContainers();
+                
+                this.renderCharts(filteredList);
+                modal.classList.add('active');
+            }
+            
+            // 修复 Bug 2: 饼图无法再次点击的关键步骤
+            resetChartContainers() {
+                const expenseContainer = document.getElementById('expense-chart-container');
+                const incomeContainer = document.getElementById('income-chart-container');
+                
+                if (this.chartInstances.expense) {
+                    this.chartInstances.expense.destroy();
+                    this.chartInstances.expense = null;
+                }
+                if (this.chartInstances.income) {
+                    this.chartInstances.income.destroy();
+                    this.chartInstances.income = null;
+                }
+                
+                // 清空并重新创建 canvas
+                expenseContainer.innerHTML = '<canvas id="expense-chart"></canvas>';
+                incomeContainer.innerHTML = '<canvas id="income-chart"></canvas>';
+            }
+
+            
+            renderCharts(transactions) {
+                // 1. 准备支出数据
+                const expenseData = transactions
+                    .filter(t => t.type === 'expense')
+                    .reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + parseFloat(t.amount);
+                        return acc;
+                    }, {});
+
+                // 2. 准备收入数据
+                const incomeData = transactions
+                    .filter(t => t.type === 'income')
+                    .reduce((acc, t) => {
+                        acc[t.category] = (acc[t.category] || 0) + parseFloat(t.amount);
+                        return acc;
+                    }, {});
+                    
+                // 3. 绘制支出饼图
+                const expenseCategories = Object.keys(expenseData);
+                const expenseAmounts = Object.values(expenseData);
+                const expenseChartEl = document.getElementById('expense-chart');
+                const expenseContainer = document.getElementById('expense-chart-container');
+                
+                if (expenseAmounts.length > 0) {
+                    this.chartInstances.expense = new Chart(expenseChartEl, this.createDoughnutConfig('支出', expenseCategories, expenseAmounts));
+                } else {
+                    expenseContainer.innerHTML = '<p style="text-align:center; padding: 20px;">本月无支出记录。</p>';
+                }
+
+
+                // 4. 绘制收入饼图
+                const incomeCategories = Object.keys(incomeData);
+                const incomeAmounts = Object.values(incomeData);
+                const incomeChartEl = document.getElementById('income-chart');
+                const incomeContainer = document.getElementById('income-chart-container');
+                
+                if (incomeAmounts.length > 0) {
+                    this.chartInstances.income = new Chart(incomeChartEl, this.createDoughnutConfig('收入', incomeCategories, incomeAmounts, true));
+                } else {
+                    incomeContainer.innerHTML = '<p style="text-align:center; padding: 20px;">本月无收入记录。</p>';
+                }
+            }
+            
+            // Chart.js 配置函数
+            createDoughnutConfig(title, labels, data, isIncome = false) {
+                const colors = this.generateChartColors(labels.length, isIncome);
+                return {
+                    type: 'doughnut',
+                    data: {
+                        labels: labels,
+                        datasets: [{
+                            data: data,
+                            backgroundColor: colors.background,
+                            borderColor: colors.border,
+                            borderWidth: 1
+                        }]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: {
+                                position: 'right',
+                                labels: {
+                                    boxWidth: 15
+                                }
+                            },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        let label = context.label || '';
+                                        if (label) label += ': ';
+                                        if (context.parsed !== null) {
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = ((context.parsed / total) * 100).toFixed(1) + '%';
+                                            label += '¥' + context.parsed.toFixed(2) + ' (' + percentage + ')';
+                                        }
+                                        return label;
+                                    }
+                                }
+                            },
+                            title: { display: false }
+                        }
+                    }
+                };
+            }
+            
+            // 简单颜色生成器
+            generateChartColors(count, isIncome) {
+                const baseColors = isIncome ? 
+                    ['#7FB096', '#A1D9B5', '#60A56E', '#4CAF50', '#8BC34A'] : // 绿色系
+                    ['#FF6B6B', '#FFB7B2', '#FF8800', '#FFCDD2', '#FFECB3']; // 红色系/暖色系
+
+                let background = [];
+                let border = [];
+                for(let i = 0; i < count; i++) {
+                    const baseColor = baseColors[i % baseColors.length];
+                    background.push(baseColor);
+                    // 边框使用更深的颜色
+                    border.push(isIncome ? '#5F8C76' : '#FF6B6B'); 
+                }
+                return { background, border };
+            }
 
             closeModal(id) { 
                 document.getElementById(id).classList.remove('active'); 
+                
+                // 修复 Bug 2: 确保关闭饼图 Modal 时销毁 Chart 实例
+                if (id === 'chart-modal') {
+                    this.resetChartContainers();
+                }
+                
                 this.currentEditId = null; 
                 this.currentEditTransactionId = null; 
                 this.currentMultiEditData = null; // 清理多笔修改状态
                 this.currentMultiEditIndex = 0;
+                this.isDeletingCategory = false;
             }
         }
 
