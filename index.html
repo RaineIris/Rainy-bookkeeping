@@ -1,0 +1,2277 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover">
+    <title>Rainy记账</title>
+    <link href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css" rel="stylesheet">
+    <style>
+        :root {
+            --primary: #7FB096;
+            --primary-dark: #5F8C76;
+            --secondary: #E8F5E9;
+            --accent: #FFB7B2;
+            --bg: #F4F9F6;
+            --card-bg: #FFFFFF;
+            --text-main: #3E4A42;
+            --text-sub: #8C9991;
+            --shadow: 0 4px 20px rgba(127, 176, 150, 0.15);
+            --warn-color: #FF8800; /* 亮橙色 */
+            --danger-color: #FF6B6B; /* 红色 */
+            --ai-highlight: #3D9970; /* AI 结果高亮色 */
+        }
+
+        * { box-sizing: border-box; margin: 0; padding: 0; outline: none; -webkit-tap-highlight-color: transparent; }
+        
+        body { 
+            font-family: 'PingFang SC', 'Microsoft YaHei', sans-serif; 
+            background-color: var(--bg); 
+            color: var(--text-main); 
+            height: 100dvh; 
+            display: flex; 
+            flex-direction: column; 
+            overflow: hidden; 
+        }
+
+        /* --- Header --- */
+        header {
+            padding: 20px 24px 10px;
+            padding-top: max(20px, env(safe-area-inset-top)); 
+            background: linear-gradient(180deg, #FFFFFF 0%, #F1F8F4 100%);
+            border-bottom-left-radius: 28px;
+            border-bottom-right-radius: 28px;
+            box-shadow: var(--shadow);
+            z-index: 10;
+            flex-shrink: 0;
+        }
+        
+        .header-top { display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 20px; }
+        .total-label { font-size: 13px; color: var(--text-sub); margin-bottom: 5px; }
+        .total-amount { font-size: 34px; font-weight: bold; color: var(--text-main); font-family: sans-serif; letter-spacing: 0.5px; transition: color 0.3s;}
+        .total-amount.warn { color: var(--warn-color); }
+        .total-amount.danger { color: var(--danger-color); }
+
+        .settings-btn { color: var(--text-sub); font-size: 18px; padding: 5px; margin-left: 5px; cursor: pointer; }
+
+        .stats-btn { 
+            width: 44px; height: 44px; border-radius: 14px; background: white; 
+            display: flex; align-items: center; justify-content: center;
+            box-shadow: 0 4px 12px rgba(127, 176, 150, 0.2); 
+            color: var(--primary); font-size: 22px; cursor: pointer; transition: transform 0.1s;
+        }
+        .stats-btn:active { transform: scale(0.95); }
+
+        .accounts-scroll {
+            display: flex; gap: 12px; overflow-x: auto; padding: 5px 2px; 
+            min-height: 48px; scrollbar-width: none; align-items: center;
+        }
+        .accounts-scroll::-webkit-scrollbar { display: none; }
+
+        .account-badge {
+            background: var(--card-bg); padding: 8px 14px; border-radius: 12px;
+            font-size: 13px; white-space: nowrap; border: 1px solid #E0EBE4;
+            display: flex; align-items: center; gap: 6px; color: var(--text-sub);
+            box-shadow: 0 2px 6px rgba(0,0,0,0.02); transition: all 0.2s;
+        }
+        .account-badge.active { background: var(--secondary); color: var(--primary-dark); border-color: var(--primary); font-weight: bold; box-shadow: none; }
+        .account-badge span { font-weight: bold; color: var(--text-main); }
+        
+        /* 加宽的长方形虚线添加按钮 */
+        .add-account-box {
+            height: 38px; 
+            min-width: 60px; /* 增加宽度 */
+            padding: 0 10px;
+            border-radius: 10px;
+            background: transparent;
+            color: var(--primary); 
+            display: flex; align-items: center; justify-content: center;
+            flex-shrink: 0; cursor: pointer; 
+            border: 2px dashed #C3DBCF;
+            font-size: 16px;
+            transition: all 0.2s;
+            gap: 5px;
+        }
+        .add-account-box:active { background: var(--secondary); border-color: var(--primary); }
+        .add-account-box span { font-size: 13px; font-weight: bold; }
+
+        /* --- Chat --- */
+        #chat-container {
+            flex: 1; overflow-y: auto; padding: 20px;
+            display: flex; flex-direction: column; gap: 20px;
+            padding-bottom: 30px;
+        }
+
+        .msg { 
+            display: flex; max-width: 90%; margin-bottom: 5px; animation: fadeIn 0.3s ease; 
+            position: relative; 
+        }
+        .msg.user { align-self: flex-end; flex-direction: row-reverse; }
+        .msg.ai { align-self: flex-start; }
+        
+        .avatar {
+            width: 38px; height: 38px; border-radius: 50%; 
+            display: flex; align-items: center; justify-content: center;
+            font-size: 18px; margin: 0 10px; flex-shrink: 0;
+        }
+        .msg.user .avatar { background: var(--primary); color: white; }
+        .msg.ai .avatar { background: white; color: var(--primary); border: 1px solid #E0EBE4; }
+
+        .bubble {
+            padding: 14px 18px; border-radius: 20px; font-size: 15px; line-height: 1.5;
+            position: relative; box-shadow: 0 2px 8px rgba(0,0,0,0.03); word-wrap: break-word;
+            white-space: pre-wrap; 
+            touch-action: pan-y; /* 允许垂直滑动，阻止长按计时器阻止默认行为 */
+        }
+        .msg.user .bubble { background: var(--primary); color: white; border-top-right-radius: 4px; }
+        .msg.ai .bubble { background: white; color: var(--text-main); border-top-left-radius: 4px; border: 1px solid #E8F0EB; }
+        
+        .msg.ai .bubble strong { font-weight: bold; color: var(--primary-dark); }
+        .msg.ai .bubble i { font-size: 1em; margin: 0 2px; } 
+        
+        /* AI 数字结果高亮 */
+        .ai-result-highlight {
+            font-weight: bold;
+            font-size: 1.2em;
+            color: var(--ai-highlight);
+            display: inline-block;
+            margin: 0 4px;
+            padding: 2px 6px;
+            border-radius: 6px;
+            background: var(--secondary);
+            font-family: sans-serif;
+            letter-spacing: 0.5px;
+        }
+
+        /* Bill Card */
+        .bill-card {
+            background: #FAFCFB; border-radius: 16px; padding: 16px; width: 250px;
+            margin-top: 10px; border: 1px solid var(--secondary);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.04);
+        }
+        .bill-row { display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 14px; }
+        .bill-label { color: var(--text-sub); }
+        .bill-value { font-weight: bold; }
+        .bill-remark { 
+            font-size: 13px; color: var(--text-sub); background: rgba(0,0,0,0.03); 
+            padding: 8px 10px; border-radius: 8px; margin-top: 10px; display: block;
+        }
+        .bill-actions { display: flex; gap: 10px; margin-top: 15px; }
+        .btn-mini { 
+            flex: 1; padding: 10px 0; border-radius: 10px; border: none; font-size: 13px; font-weight: bold; cursor: pointer;
+            touch-action: manipulation; 
+        }
+        .btn-confirm { background: var(--primary); color: white; }
+        .btn-edit { background: white; border: 1px solid #DDD; color: var(--text-sub); }
+        .btn-revoke { background: #FFF0F0; color: #FF6B6B; border: 1px solid #FFD0D0; margin-top: 8px; width: 100%; padding: 10px 0; }
+        
+        .status-badge { text-align: center; width: 100%; padding: 10px; font-size: 13px; border-radius: 10px; margin-top: 10px; font-weight: bold; }
+        .status-done { background: var(--secondary); color: var(--primary-dark); }
+        /* 不扣余额的标签优化 */
+        .status-no-bal { 
+            display: inline-block; 
+            padding: 2px 8px; 
+            background: #FFF0F0; 
+            color: var(--danger-color); 
+            border-radius: 6px; 
+            font-size: 12px; 
+            font-weight: bold; 
+            line-height: 1.5;
+        }
+        .bill-row-nobal { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; font-size: 14px; }
+
+
+        /* Input Area */
+        .input-area {
+            background: white; padding: 12px 16px; 
+            padding-bottom: max(16px, env(safe-area-inset-bottom));
+            box-shadow: 0 -4px 20px rgba(0,0,0,0.04); display: flex; align-items: flex-end; gap: 12px; flex-shrink: 0; z-index: 20;
+            flex-direction: column;
+        }
+        
+        /* 快捷指令区域 (整体居中) */
+        #quick-reply-area-wrapper {
+            width: 100%; 
+            display: flex; 
+            justify-content: center; 
+            padding-bottom: 15px; 
+            overflow-x: auto; 
+            scrollbar-width: none;
+        }
+        #quick-reply-area-wrapper::-webkit-scrollbar { display: none; }
+
+        #quick-reply-area {
+            display: flex; 
+            gap: 10px; 
+            flex-shrink: 0; 
+            max-width: 100%;
+            justify-content: center;
+        }
+
+        .qr-chip { 
+            padding: 6px 14px; border-radius: 16px; background: var(--secondary); 
+            color: var(--primary-dark); font-size: 13px; white-space: nowrap; 
+            border: 1px solid var(--primary); cursor: pointer; font-weight: bold;
+            transition: transform 0.1s; flex-shrink: 0;
+            touch-action: manipulation;
+        }
+        .qr-chip:active { transform: scale(0.95); }
+        .qr-add { 
+            background: transparent; 
+            color: var(--primary); 
+            border: 1px dashed var(--primary); 
+            padding: 6px 14px;
+            display: flex; 
+            align-items: center; 
+            justify-content: center;
+            min-width: 60px; 
+        }
+
+        /* 消息输入行 */
+        .msg-input-row {
+            width: 100%; display: flex; align-items: flex-end; gap: 12px;
+        }
+
+        #add-btn {
+            width: 42px; height: 42px; border-radius: 50%; background: var(--secondary); color: var(--primary);
+            border: none; font-size: 20px; display: flex; align-items: center; justify-content: center; cursor: pointer; flex-shrink: 0;
+        }
+        #msg-input {
+            flex: 1; background: #F4F9F6; border: 1px solid transparent; padding: 12px 20px; border-radius: 24px;
+            font-size: 16px; color: var(--text-main); resize: none; overflow: hidden; max-height: 120px; line-height: 1.5;
+        }
+        #msg-input:focus { border-color: var(--primary); background: white; }
+        #send-btn { color: var(--primary); font-size: 22px; border: none; background: none; cursor: pointer; padding: 5px; flex-shrink: 0; }
+
+        /* --- Custom Dialogs & Modals --- */
+        .modal {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(0,0,0,0.5); z-index: 100; display: none; align-items: flex-end; backdrop-filter: blur(5px);
+        }
+        .modal.active { display: flex; animation: slideUp 0.3s cubic-bezier(0.2, 0.8, 0.2, 1); }
+        
+        .modal.center-modal {
+            align-items: center; justify-content: center; 
+        }
+        .modal.center-modal .modal-content {
+            width: 85%; max-width: 320px; border-radius: 24px; padding: 25px;
+            max-height: unset; overflow-y: visible;
+        }
+        /* 记账翻页按钮样式 */
+        .entry-nav-btn {
+            background: var(--secondary);
+            color: var(--primary-dark);
+            border: 1px solid var(--primary);
+            padding: 8px 12px;
+            border-radius: 10px;
+            font-size: 14px;
+            cursor: pointer;
+            transition: background 0.1s;
+        }
+        .entry-nav-btn:disabled {
+            background: #EEE;
+            color: #AAA;
+            border-color: #DDD;
+            cursor: default;
+        }
+        #entry-nav-controls {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding-bottom: 15px; /* 调整间距 */
+            border-bottom: 1px dashed #EEE;
+            margin-bottom: 15px;
+        }
+        #entry-index-status {
+            font-weight: bold;
+            color: var(--primary-dark);
+            font-size: 15px;
+            min-width: 80px;
+            text-align: center;
+        }
+
+
+        .modal-fullscreen .modal-content {
+            height: 95vh; border-bottom-left-radius: 0; border-bottom-right-radius: 0;
+            display: flex; flex-direction: column;
+        }
+        
+        .modal-content {
+            width: 100%; background: white; border-top-left-radius: 28px; border-top-right-radius: 28px;
+            padding: 24px 24px max(34px, env(safe-area-inset-bottom)); 
+            max-height: 90vh; overflow-y: auto;
+            box-shadow: 0 -10px 40px rgba(0,0,0,0.1);
+        }
+        
+        .modal-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 25px; flex-shrink: 0; }
+        .modal-title { font-size: 19px; font-weight: bold; }
+        .close-btn { color: #CCC; font-size: 24px; padding: 5px; cursor: pointer; }
+
+        /* Dialog Specific Styles */
+        .dialog-msg { font-size: 15px; color: var(--text-main); margin-bottom: 20px; line-height: 1.5; text-align: center; }
+        .dialog-actions { display: flex; gap: 10px; }
+        .btn-dialog { flex: 1; padding: 12px; border-radius: 12px; font-weight: bold; font-size: 14px; border: none; cursor: pointer; }
+        .btn-dialog-cancel { background: #F5F5F5; color: var(--text-sub); }
+        .btn-dialog-confirm { background: var(--primary); color: white; }
+        .btn-dialog-danger { background: #FFF0F0; color: var(--danger-color); }
+        .btn-dialog-delete { background: var(--danger-color); color: white; }
+
+
+        /* Settings Style */
+        .acc-setting-card {
+            background: #FAFCFB; border: 1px solid #F0F5F2; border-radius: 16px; 
+            padding: 16px; margin-bottom: 15px; position: relative;
+        }
+        .acc-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; }
+        .acc-name { font-weight: bold; font-size: 16px; color: var(--text-main); }
+        .acc-del-btn { color: #FFB7B2; font-size: 14px; cursor: pointer; padding: 5px; }
+        .acc-row { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; font-size: 14px; }
+        .acc-label { color: var(--text-sub); }
+        .acc-input { 
+            width: 100px; padding: 6px 10px; border: 1px solid #EEE; border-radius: 8px; 
+            text-align: right; font-weight: bold; font-size: 14px; color: var(--text-main); background: white;
+        }
+        .switch-row { display: flex; justify-content: space-between; align-items: center; margin-top: 10px; padding-top: 10px; border-top: 1px dashed #EEE; }
+        .switch-desc { font-size: 12px; color: var(--primary); }
+        .switch { position: relative; display: inline-block; width: 44px; height: 24px; }
+        .switch input { opacity: 0; width: 0; height: 0; }
+        .slider { position: absolute; cursor: pointer; top: 0; left: 0; right: 0; bottom: 0; background-color: #EEE; transition: .4s; border-radius: 24px; }
+        .slider:before { position: absolute; content: ""; height: 18px; width: 18px; left: 3px; bottom: 3px; background-color: white; transition: .4s; border-radius: 50%; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        input:checked + .slider { background-color: var(--primary); }
+        input:checked + .slider:before { transform: translateX(20px); }
+
+        /* 余额预警值设置 */
+        #alert-setting { margin-top: 20px; padding-top: 20px; border-top: 1px solid #EEE; }
+
+
+        /* Stats List */
+        .stats-scroll-area { flex: 1; overflow-y: auto; padding-bottom: 20px; }
+        .stats-month-selector { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; padding-top: 10px; }
+        .stats-month-selector select { 
+            /* 修正：美化下拉框 */
+            border: 1px solid #EEE; padding: 6px 10px; border-radius: 12px; font-size: 15px; font-weight: bold; 
+            color: var(--text-main); background: #FAFCFB; appearance: none;
+            padding-right: 30px; 
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill="%238C9991" d="M9.293 12.95l-.707.707L13.5 18.5l5.657-5.657-.707-.707L13.5 17.086z"/></svg>');
+            background-repeat: no-repeat;
+            background-position: right 10px center;
+            background-size: 15px;
+        }
+
+        .stats-day-group { margin-bottom: 20px; }
+        .stats-date-header { 
+            font-size: 14px; font-weight: bold; color: var(--text-sub); 
+            padding: 5px 0; margin-bottom: 10px; border-bottom: 1px solid #EEE;
+        }
+
+        .stat-item { 
+            display: flex; justify-content: space-between; padding: 16px; 
+            background: #FAFCFB; border-radius: 14px; align-items: center; 
+            margin-bottom: 10px; border: 1px solid #F0F5F2; 
+        }
+        .stat-item:last-child { margin-bottom: 0; }
+        .stat-left { display: flex; flex-direction: column; gap: 4px; }
+        .stat-cat { font-weight: bold; font-size: 15px; }
+        .stat-note { font-size: 13px; color: var(--text-sub); }
+        .stat-right { text-align: right; }
+        .stat-amt { font-weight: bold; font-size: 16px; }
+        .stat-date { font-size: 12px; color: var(--text-sub); margin-top: 2px; }
+        .expense-amt { color: var(--text-main); }
+        .income-amt { color: var(--primary); }
+
+        /* Chips & Form */
+        .form-group { margin-bottom: 20px; }
+        .form-label { display: block; font-size: 13px; color: var(--text-sub); margin-bottom: 10px; }
+        .chips { display: flex; flex-wrap: wrap; gap: 10px; }
+        .chip { padding: 8px 16px; border-radius: 18px; background: #F4F9F6; color: var(--text-sub); font-size: 14px; border: 1px solid transparent; cursor: pointer; }
+        .chip.active { background: var(--secondary); color: var(--primary-dark); border-color: var(--primary); font-weight: bold; }
+        .chip-add { border: 1px dashed var(--primary); color: var(--primary); padding: 8px 12px; }
+        
+        .amount-input { width: 100%; border: none; border-bottom: 1px solid #EEE; font-size: 40px; font-weight: bold; color: var(--text-main); padding: 5px 0; font-family: sans-serif; }
+        .note-input { width: 100%; background: #F8F8F8; border: none; padding: 14px; border-radius: 12px; color: var(--text-main); font-size: 14px; }
+        .btn-block { width: 100%; padding: 16px; background: var(--primary); color: white; border: none; border-radius: 16px; font-size: 16px; font-weight: bold; margin-top: 10px; cursor: pointer; }
+        .btn-outline { background: white; color: var(--text-main); border: 1px solid #EEE; margin-top: 10px; }
+
+        /* Quick Reply Form */
+        .qr-form-row { display: flex; align-items: center; margin-bottom: 15px; }
+        .qr-form-label { flex-basis: 70px; font-size: 14px; color: var(--text-sub); }
+        /* 统一美化 select/input 样式 */
+        .qr-form-input, .qr-form-select { 
+            flex: 1; background: #F8F8F8; border: 1px solid #F0F0F0; padding: 10px; border-radius: 10px; font-size: 14px; color: var(--text-main);
+        }
+        .qr-form-select { 
+            appearance: none; 
+            padding-right: 30px; 
+            background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 20 20"><path fill="%238C9991" d="M9.293 12.95l-.707.707L13.5 18.5l5.657-5.657-.707-.707L13.5 17.086z"/></svg>'); 
+            background-repeat: no-repeat; 
+            background-position: right 10px center; 
+            background-size: 15px; 
+        }
+
+
+        /* Fix for Dialog multiple buttons */
+        #dialog-btn-container {
+            display: flex; gap: 10px; justify-content: center;
+        }
+        .dialog-actions .btn-dialog {
+            flex: 1;
+            min-width: 80px;
+        }
+
+        /* Animation */
+        @keyframes slideUp { from { transform: translateY(100%); } to { transform: translateY(0); } }
+        @keyframes fadeIn { from { opacity: 0; transform: translateY(5px); } to { opacity: 1; transform: translateY(0); } }
+        @keyframes fadePopup { from { opacity: 0; transform: scale(0.95); } to { opacity: 1; transform: scale(1); } }
+        .modal.center-modal .modal-content { animation: fadePopup 0.2s cubic-bezier(0.2, 0.8, 0.2, 1); }
+
+        /* 加载动画 */
+        .typing-dot { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #BBB; animation: typing 1.4s infinite ease-in-out both; margin: 0 3px; }
+        .typing-dot:nth-child(1) { animation-delay: -0.32s; }
+        .typing-dot:nth-child(2) { animation-delay: -0.16s; }
+        @keyframes typing { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1); } }
+    </style>
+</head>
+<body>
+
+    <header>
+        <div class="header-top">
+            <div style="flex:1">
+                <div class="total-label">本月净资产 (元)</div>
+                <div style="display:flex; align-items:center;">
+                    <div class="total-amount" id="total-assets">0.00</div>
+                    <i class="fa-solid fa-gear settings-btn" onclick="app.openSettingsModal()"></i>
+                </div>
+            </div>
+            <div class="stats-btn" onclick="app.openStatsModal()">
+                 <i class="fa-solid fa-cloud-rain"></i>
+            </div>
+        </div>
+        
+        <div class="accounts-scroll" id="accounts-list">
+            </div>
+    </header>
+
+    <div id="chat-container"></div>
+
+    <div class="input-area">
+        <div id="quick-reply-area-wrapper">
+            <div id="quick-reply-area">
+                </div>
+        </div>
+
+        <div class="msg-input-row">
+            <button id="add-btn" onclick="app.openManualModal()"><i class="fa-solid fa-plus"></i></button>
+            <textarea id="msg-input" placeholder="输入消费内容 (如: 奶茶20)" rows="1" oninput="app.autoGrow(this)" onkeypress="if(event.keyCode==13 && !event.shiftKey) { event.preventDefault(); app.sendMessage(); }"></textarea>
+            <button id="send-btn" onclick="app.sendMessage()"><i class="fa-solid fa-paper-plane"></i></button>
+        </div>
+    </div>
+
+    <div class="modal" id="entry-modal">
+        <div class="modal-content">
+            <div id="entry-nav-controls" style="display: none;">
+                <button class="entry-nav-btn" id="entry-nav-prev" onclick="app.navigateEntry(-1)" disabled><i class="fa-solid fa-arrow-left"></i> 上一条</button>
+                <span id="entry-index-status">1/1</span>
+                <button class="entry-nav-btn" id="entry-nav-next" onclick="app.navigateEntry(1)" disabled>下一条 <i class="fa-solid fa-arrow-right"></i></button>
+            </div>
+            
+            <div class="modal-header">
+                <span class="modal-title" id="entry-title">记一笔</span>
+                <span class="close-btn" onclick="app.closeModal('entry-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div class="form-group">
+                <div class="chips" id="type-select">
+                    <div class="chip active" data-type="expense" onclick="app.setFormType('expense')">支出</div>
+                    <div class="chip" data-type="income" onclick="app.setFormType('income')">收入</div>
+                </div>
+            </div>
+            <div class="form-group"><label class="form-label">金额</label><input type="number" class="amount-input" id="form-amount" placeholder="0.00"></div>
+            <div class="form-group"><label class="form-label">分类</label><div class="chips" id="category-chips"></div></div>
+            <div class="form-group"><label class="form-label">账户</label><div class="chips" id="account-chips"></div></div>
+            <div class="form-group">
+                <label class="form-label">记账选项</label>
+                <div class="chips">
+                    <div class="chip active" data-value="true" onclick="app.toggleChip(this, true, 'option-balance')">扣减/增加余额</div>
+                    <div class="chip" data-value="false" onclick="app.toggleChip(this, true, 'option-balance')">仅记账(不扣余额)</div>
+                </div>
+            </div>
+            <div class="form-group"><label class="form-label">备注</label><input type="text" class="note-input" id="form-note" placeholder="写点什么..."></div>
+            <button class="btn-block" onclick="app.saveManualEntry()">确认记账</button>
+        </div>
+    </div>
+
+    <div class="modal modal-fullscreen" id="stats-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">账单明细</span>
+                <span class="close-btn" onclick="app.closeModal('stats-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div class="stats-month-selector">
+                <span class="modal-title" id="stats-title-month"></span>
+                <select id="month-selector" onchange="app.renderStatsList(this.value)"></select>
+            </div>
+            <div class="stats-scroll-area" id="stats-list-container"></div>
+        </div>
+    </div>
+
+    <div class="modal" id="settings-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title">账户管理与设置</span>
+                <span class="close-btn" onclick="app.closeModal('settings-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div id="settings-list" style="margin-bottom:20px;"></div>
+            
+            <div id="alert-setting">
+                <div class="acc-row">
+                    <span class="acc-label">余额预警值 (元)</span>
+                    <input type="number" class="acc-input" id="alert-threshold-input" onchange="app.updateAlertThreshold(this.value)">
+                </div>
+                <p style="font-size:12px; color:var(--text-sub); margin-top:5px;">低于此值，余额将显示为橙色。</p>
+            </div>
+
+            <div style="text-align:center; margin-top:30px;">
+                <button class="btn-dialog btn-dialog-delete" onclick="app.confirmResetAllData()">清空所有数据</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal center-modal" id="add-account-modal">
+        <div class="modal-content">
+            <div class="modal-header" style="margin-bottom: 15px;">
+                <span class="modal-title">添加支付方式</span>
+                <span class="close-btn" onclick="app.closeModal('add-account-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div class="form-group">
+                <label class="form-label">名称</label>
+                <input type="text" class="note-input" id="new-acc-name" placeholder="例如：微信、银行卡">
+            </div>
+            <div class="form-group">
+                <label class="form-label">当前余额</label>
+                <input type="number" class="note-input" id="new-acc-bal" placeholder="0.00">
+            </div>
+            <div class="form-group">
+                <label class="form-label">月初重置目标 (选填)</label>
+                <input type="number" class="note-input" id="new-acc-target" placeholder="不填则关闭自动重置">
+            </div>
+            <div class="dialog-actions">
+                <button class="btn-dialog btn-dialog-cancel" onclick="app.closeModal('add-account-modal')">取消</button>
+                <button class="btn-dialog btn-dialog-confirm" onclick="app.confirmAddAccount()">添加</button>
+            </div>
+        </div>
+    </div>
+    
+    <div class="modal center-modal" id="quick-reply-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="qr-modal-title">创建快捷指令</span>
+                <span class="close-btn" onclick="app.closeModal('quick-reply-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">名称</label>
+                <input type="text" class="qr-form-input" id="qr-name" placeholder="例如: 奶茶">
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">类型</label>
+                <div class="chips" id="qr-type-select">
+                    <div class="chip active" data-type="expense" onclick="app.toggleChip(this, true, 'qr-type-select'); app.populateQRSelectors()">支出</div>
+                    <div class="chip" data-type="income" onclick="app.toggleChip(this, true, 'qr-type-select'); app.populateQRSelectors()">收入</div>
+                </div>
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">金额</label>
+                <input type="number" class="qr-form-input" id="qr-amount" placeholder="0.00">
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">分类</label>
+                <select class="qr-form-select" id="qr-category"></select>
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">账户</label>
+                <select class="qr-form-select" id="qr-account"></select>
+            </div>
+            <div class="qr-form-row">
+                <label class="qr-form-label">不扣余额</label>
+                <label class="switch">
+                    <input type="checkbox" id="qr-no-balance">
+                    <span class="slider"></span>
+                </label>
+            </div>
+            <div class="dialog-actions">
+                <button class="btn-dialog btn-dialog-cancel" onclick="app.closeModal('quick-reply-modal')">取消</button>
+                <button class="btn-dialog btn-dialog-confirm" onclick="app.saveQuickReply()">保存</button>
+            </div>
+        </div>
+    </div>
+
+    <div class="modal center-modal" id="qr-group-modal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <span class="modal-title" id="qr-group-title"></span>
+                <span class="close-btn" onclick="app.closeModal('qr-group-modal')"><i class="fa-solid fa-xmark"></i></span>
+            </div>
+            <div id="qr-group-list" style="max-height: 400px; overflow-y: auto;"></div>
+            <div class="dialog-actions" style="margin-top: 15px;">
+                <button class="btn-dialog btn-dialog-cancel" onclick="app.closeModal('qr-group-modal')">关闭</button>
+            </div>
+        </div>
+    </div>
+
+
+    <div class="modal center-modal" id="dialog-modal">
+        <div class="modal-content">
+            <div class="modal-title" id="dialog-title" style="text-align:center; margin-bottom:15px;">提示</div>
+            <div class="dialog-msg" id="dialog-msg"></div>
+            
+            <div id="dialog-input-container" style="display:none; margin-bottom:20px;">
+                <input type="text" class="note-input" id="dialog-input" style="text-align:center">
+            </div>
+
+            <div class="dialog-actions" id="dialog-btn-container">
+                </div>
+        </div>
+    </div>
+
+    <script>
+        // 请替换成您自己的 API Key
+        const API_KEY = "gg-gcli-OawY2yjsbJ2RldWkWhMvyHbUQKLUivEnTp8giJN-KFQ";
+        const API_URL = "https://gcli.ggchan.dev/v1beta/models/gemini-2.5-flash:generateContent";
+
+        class App {
+            constructor() {
+                try {
+                    let saved = JSON.parse(localStorage.getItem('rainy_data'));
+                    this.data = saved || {};
+                    this.migrateData();
+                    
+                    this.defaultCats = {
+                        expense: ['餐饮', '交通', '购物', '娱乐', '日用', '房租', '医疗'],
+                        income: ['工资', '生活费', '红包', '兼职']
+                    };
+                    
+                    this.checkMonthlyReset();
+                    this.initUI();
+                    
+                    // 绑定事件以便在 Modal 关闭后清理状态
+                    document.getElementById('entry-modal').addEventListener('click', (e) => {
+                         if (e.target.id === 'entry-modal') {
+                             this.currentMultiEditData = null;
+                             this.currentMultiEditIndex = 0;
+                         }
+                    });
+                } catch (e) {
+                    console.error("初始化数据失败:", e);
+                    alert("数据异常，请联系开发者。");
+                }
+            }
+
+            migrateData() {
+                if (!this.data.accounts) this.data.accounts = [];
+                this.data.accounts.forEach(acc => {
+                    if (acc.targetBalance === undefined) acc.targetBalance = 0; 
+                    if (acc.autoReset === undefined) acc.autoReset = false;
+                });
+                if (!this.data.transactions) this.data.transactions = [];
+                if (!this.data.chatHistory) this.data.chatHistory = [];
+                if (!this.data.customCategories) this.data.customCategories = { expense: [], income: [] };
+                if (!this.data.alertThreshold) this.data.alertThreshold = 10; // 默认预警值
+                if (!this.data.quickReplies) this.data.quickReplies = [];
+                if (!this.data.monthlyData) this.data.monthlyData = {}; 
+
+                if (this.data.chatHistory.length === 0) {
+                    // 修正：初始消息图标使用 Font Awesome
+                    this.addHistory({ 
+                        role: 'ai', 
+                        text: `我是Rainy，您的贴身记账助手！\n\n- 点击右上角的 <i class="fa-solid fa-cloud-rain"></i> 即可查看您的账单明细。\n- 您可以通过两种方式记账：\n  1. 点击左下角的 <i class="fa-solid fa-plus"></i> 进行手动记账。\n  2. 在输入框内直接输入内容，我将尝试为您智能记账。\n- 您可以在输入框上面的位置添加 **快捷指令**，实现一键快速记账！\n\n温馨提示：请在使用前先添加至少一个支付账户哦！` 
+                    });
+                }
+            }
+
+            initUI() {
+                this.updateHeader();
+                this.renderChatHistory();
+                this.renderQuickReplies();
+                
+                this.currentMultiEditData = null;
+                this.currentMultiEditIndex = 0;
+            }
+
+            saveData() {
+                localStorage.setItem('rainy_data', JSON.stringify(this.data));
+            }
+
+            checkMonthlyReset() {
+                const now = new Date();
+                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                const savedMonthKey = this.data.lastActiveMonthKey;
+                
+                // 只有当是每月1号 且 当前月份与上次活跃月份不同时才重置
+                if (now.getDate() === 1 && (!savedMonthKey || savedMonthKey !== currentMonthKey)) {
+                    let resetNames = [];
+                    this.data.accounts.forEach(acc => {
+                        if (acc.autoReset) {
+                            acc.balance = parseFloat(acc.targetBalance);
+                            resetNames.push(acc.name);
+                        }
+                    });
+                    
+                    if (resetNames.length > 0) {
+                        this.addHistory({role:'ai', text:`新的一月（${currentMonthKey}）！已将 [${resetNames.join(', ')}] 的余额重置为设定目标。`});
+                    }
+                    this.data.lastActiveMonthKey = currentMonthKey;
+                    this.saveData();
+                } else if (!savedMonthKey) {
+                    // 第一次打开，记录当前月份
+                    this.data.lastActiveMonthKey = currentMonthKey;
+                    this.saveData();
+                }
+            }
+            
+            // 切换 chip 状态 (用于 entry-modal 的不扣余额和 quick-reply-modal 的类型选择)
+            toggleChip(clickedChip, isExclusive = true, containerId = null) {
+                if (isExclusive) {
+                    const container = containerId ? document.getElementById(containerId) : clickedChip.parentElement;
+                    Array.from(container.children).forEach(c => c.classList.remove('active'));
+                }
+                clickedChip.classList.toggle('active');
+            }
+
+            // --- Header UI ---
+            updateHeader() {
+                const threshold = parseFloat(this.data.alertThreshold) || 0;
+                let total = 0;
+                const container = document.getElementById('accounts-list');
+                container.innerHTML = '';
+                
+                this.data.accounts.forEach(acc => {
+                    const bal = parseFloat(acc.balance);
+                    total += bal;
+                    const div = document.createElement('div');
+                    div.className = `account-badge ${acc.name === this.data.defaultAccount ? 'active' : ''}`;
+                    
+                    const span = document.createElement('span');
+                    span.innerText = `¥${bal.toFixed(2)}`;
+                    
+                    // 账户余额颜色变化逻辑
+                    if (bal < 0) {
+                        span.style.color = 'var(--danger-color)';
+                    } else if (bal < threshold) {
+                        span.style.color = 'var(--warn-color)';
+                    } else {
+                         span.style.color = 'var(--text-main)';
+                    }
+                    
+                    div.innerHTML = `${acc.name} `;
+                    div.appendChild(span);
+                    
+                    div.onclick = () => this.setDefaultAccount(acc.name);
+                    container.appendChild(div);
+                });
+
+                // 长方形虚线添加按钮
+                const addBtn = document.createElement('div');
+                addBtn.className = 'add-account-box';
+                addBtn.innerHTML = '<i class="fa-solid fa-plus"></i><span>添加账户</span>';
+                addBtn.onclick = () => this.openAddAccountModal(); 
+                container.appendChild(addBtn);
+
+                const totalEl = document.getElementById('total-assets');
+                totalEl.innerText = total.toFixed(2);
+                totalEl.classList.remove('warn', 'danger');
+                if (total < 0) {
+                    totalEl.classList.add('danger');
+                } else if (total < threshold) {
+                    totalEl.classList.add('warn');
+                }
+            }
+
+            setDefaultAccount(name) {
+                this.data.defaultAccount = name;
+                this.saveData();
+                this.updateHeader();
+            }
+            
+            // --- 输入框自动增高 ---
+            autoGrow(element) {
+                element.style.height = 'auto'; // Reset height
+                element.style.height = element.scrollHeight + 'px'; // Set new height
+            }
+
+            // --- Custom Modal System (Replace Alert/Prompt) ---
+            showDialog(options) {
+                return new Promise((resolve) => {
+                    const modal = document.getElementById('dialog-modal');
+                    const titleEl = document.getElementById('dialog-title');
+                    const msgEl = document.getElementById('dialog-msg');
+                    const inputContainer = document.getElementById('dialog-input-container');
+                    const inputEl = document.getElementById('dialog-input');
+                    const btnContainer = document.getElementById('dialog-btn-container');
+
+                    titleEl.innerText = options.title || '提示';
+                    msgEl.innerText = options.message || '';
+                    btnContainer.innerHTML = '';
+                    inputContainer.style.display = options.hasInput ? 'block' : 'none';
+                    inputEl.value = options.inputValue || '';
+
+                    // 确认按钮 (右侧或单独)
+                    if (options.confirmText) {
+                        const confirmBtn = document.createElement('button');
+                        confirmBtn.className = `btn-dialog ${options.danger ? 'btn-dialog-danger' : 'btn-dialog-confirm'}`;
+                        confirmBtn.innerText = options.confirmText;
+                        confirmBtn.onclick = () => {
+                            modal.classList.remove('active');
+                            resolve(options.hasInput ? inputEl.value : true);
+                        };
+                        btnContainer.appendChild(confirmBtn);
+                    }
+
+
+                    // 取消按钮 (左侧)
+                    if (options.cancelText) {
+                        const cancelBtn = document.createElement('button');
+                        cancelBtn.className = 'btn-dialog btn-dialog-cancel';
+                        cancelBtn.innerText = options.cancelText;
+                        cancelBtn.onclick = () => {
+                            modal.classList.remove('active');
+                            resolve(false);
+                        };
+                        btnContainer.insertBefore(cancelBtn, btnContainer.firstChild);
+                    }
+                    
+                    // 特殊按钮 (例如删除)
+                    if (options.extraButtons) {
+                        options.extraButtons.forEach(btn => {
+                             const extraBtn = document.createElement('button');
+                             extraBtn.className = `btn-dialog ${btn.className}`;
+                             extraBtn.innerText = btn.text;
+                             extraBtn.onclick = () => {
+                                 modal.classList.remove('active');
+                                 resolve(btn.action);
+                             };
+                             btnContainer.insertBefore(extraBtn, btnContainer.firstChild);
+                        });
+                    }
+
+                    modal.classList.add('active');
+                    if(options.hasInput) inputEl.focus();
+                });
+            }
+
+            async showAlert(message) {
+                return this.showDialog({ message: message, showCancel: false, confirmText: '确认' });
+            }
+
+            async showConfirm(message, danger=false) {
+                return this.showDialog({ message: message, cancelText: '取消', confirmText: '确认', danger: danger });
+            }
+
+            async showPrompt(title, message, inputValue = '') {
+                const res = await this.showDialog({ title: title, message: message, cancelText: '取消', confirmText: '确认', hasInput: true, inputValue: inputValue });
+                return res === false ? null : res;
+            }
+
+            // --- Add Account Logic ---
+            openAddAccountModal() {
+                document.getElementById('new-acc-name').value = '';
+                document.getElementById('new-acc-bal').value = '';
+                document.getElementById('new-acc-target').value = '';
+                document.getElementById('add-account-modal').classList.add('active');
+            }
+
+            async confirmAddAccount() {
+                const name = document.getElementById('new-acc-name').value.trim();
+                const bal = parseFloat(document.getElementById('new-acc-bal').value);
+                const targetStr = document.getElementById('new-acc-target').value.trim();
+                
+                if (!name) return this.showAlert("请输入账户名称");
+                if (isNaN(bal)) return this.showAlert("请输入正确的余额");
+
+                let target = 0;
+                let autoReset = false;
+                
+                if (targetStr !== '') {
+                    target = parseFloat(targetStr);
+                    if (isNaN(target)) return this.showAlert("重置目标必须是数字");
+                    autoReset = true;
+                }
+
+                if(this.data.accounts.some(a => a.name === name)) {
+                    return this.showAlert("账户名称已存在！");
+                }
+
+                this.data.accounts.push({
+                    name: name,
+                    balance: bal,
+                    targetBalance: target,
+                    autoReset: autoReset
+                });
+
+                if(!this.data.defaultAccount) this.data.defaultAccount = name;
+                
+                this.saveData();
+                this.updateHeader();
+                this.closeModal('add-account-modal');
+                if(document.getElementById('settings-modal').classList.contains('active')) {
+                    this.renderSettingsList();
+                }
+            }
+
+            // --- AI Logic ---
+            async sendMessage() {
+                const input = document.getElementById('msg-input');
+                const text = input.value.trim();
+                if (!text) return;
+
+                if (this.data.accounts.length === 0) {
+                    await this.showAlert('请先点击上方 “+ 添加账户” 添加一个支付方式！');
+                    this.openAddAccountModal();
+                    return;
+                }
+
+                // 1. 添加用户消息
+                const userMsg = { role: 'user', text: text, id: Date.now() + Math.random() };
+                this.addHistory(userMsg);
+                
+                // 2. 显示加载动画
+                const loadingId = 'loading';
+                this.renderChatHistory(); // 渲染用户消息
+                const loadingDiv = this.showLoading(loadingId); // 立即显示加载动画
+                input.value = '';
+                this.autoGrow(input); 
+                this.scrollToBottom();
+                
+
+                try {
+                    // 3. 尝试解析为账单
+                    const results = await this.callAI(text);
+                    this.removeLoading(loadingId);
+                    
+                    if (results && results.length > 0) {
+                        const aiMsg = { role: 'ai', status: 'pending', userText: text }; // 记录用户原始文本
+                        
+                        if (results.length > 1) { // 多个账单，合并
+                            const totalExpense = results.filter(i=>i.type==='expense').reduce((sum, item) => sum + parseFloat(item.amount), 0);
+                            const totalIncome = results.filter(i=>i.type==='income').reduce((sum, item) => sum + parseFloat(item.amount), 0);
+                            const totalNet = totalIncome - totalExpense;
+
+                            aiMsg.text = `检测到 ${results.length} 笔交易，总净额：${totalNet.toFixed(2)}。请确认：`;
+                            aiMsg.cardData = results;
+                            
+                        } else { // 单个账单
+                            const item = results[0];
+                            item.amount = parseFloat(item.amount) || 0;
+                            item.category = item.category || '其他';
+                            item.account = item.account || this.data.defaultAccount || (this.data.accounts[0] ? this.data.accounts[0].name : 'Unknown');
+                            item.noBalanceUpdate = item.noBalanceUpdate || false; 
+                            
+                            aiMsg.text = '请确认：';
+                            aiMsg.cardData = item;
+                        }
+                        this.addHistory(aiMsg);
+                        this.renderChatHistory();
+                    } else {
+                        // 4. 切换到问答模式
+                        const response = await this.callAIForChat(text);
+                        this.addHistory({ role: 'ai', text: response || "没看懂您的账单或问题..." });
+                        this.renderChatHistory();
+                    }
+                } catch (e) {
+                    this.removeLoading(loadingId);
+                    try {
+                        // 尝试基础问答
+                        const response = await this.callAIForChat(text);
+                        this.addHistory({ role: 'ai', text: response || `AI识别失败: ${e.message}` });
+                        this.renderChatHistory();
+                    } catch (chatError) {
+                        this.addHistory({ role: 'ai', text: `AI服务调用失败: ${chatError.message}` });
+                        this.renderChatHistory();
+                    }
+                }
+            }
+
+            async callAI(userText) {
+                const now = new Date();
+                const timeStr = `${now.getHours()}:${now.getMinutes()}`;
+                const accountNames = this.data.accounts.map(a => a.name).join(',');
+                const defaultAcc = this.data.defaultAccount || (this.data.accounts[0] ? this.data.accounts[0].name : 'Unknown');
+                const allCats = [...this.defaultCats.expense, ...this.data.customCategories.expense, 
+                                 ...this.defaultCats.income, ...this.data.customCategories.income].join(',');
+
+                const prompt = `
+                Role: Bookkeeping Parser.
+                Time: ${timeStr}.
+                User Accounts: ${accountNames}.
+                Default Account: ${defaultAcc}.
+                Allowed Categories: ${allCats}.
+                Task: Parse input "${userText}" into JSON array. If no clear transaction is found, return empty JSON array [].
+                Rules:
+                1. Infer category from Allowed Categories if possible.
+                2. Infer account. Default to ${defaultAcc}.
+                3. amount must be number.
+                4. Add "noBalanceUpdate": true if the user implies it's an old transaction or not affecting the current balance (e.g., "记一笔上个月的房租"). Default is false.
+                5. If multiple transactions are detected, ensure each item has a unique "id" field (use a random number).
+                Return JSON Array ONLY: [{"type":"expense|income","category":"x","amount":0,"account":"x","note":"x", "noBalanceUpdate": false/true, "id": ${Date.now() + Math.random()}}, ...]
+                `;
+
+                const response = await fetch(`${API_URL}?key=${API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                const result = await response.json();
+                let text = result.candidates[0].content.parts[0].text;
+                text = text.replace(/```json/g, '').replace(/```/g, '').trim();
+                if (text.startsWith('{')) text = `[${text}]`;
+                
+                try {
+                    return JSON.parse(text);
+                } catch(e) {
+                    console.error("AI返回的不是有效的JSON:", text);
+                    return [];
+                }
+            }
+            
+            async callAIForChat(userText) {
+                const totalAssets = this.data.accounts.reduce((sum, acc) => sum + parseFloat(acc.balance), 0);
+                
+                const now = new Date();
+                const year = now.getFullYear();
+                const month = now.getMonth();
+                const daysInMonth = new Date(year, month + 1, 0).getDate();
+                const currentDay = now.getDate();
+                const remainingDays = daysInMonth - currentDay + 1; 
+                
+                const remainingBudget = totalAssets; 
+                const dailyMaxSpend = remainingDays > 0 ? (remainingBudget / remainingDays) : 0;
+
+
+                const transactionsText = this.data.transactions.slice(-20).map(t => 
+                    `[${t.type==='expense'?'支出':'收入'}] ${t.category} ${t.amount.toFixed(2)}元 (${t.account}) - ${t.note}`
+                ).join('\n');
+                
+                const prompt = `
+                Role: Personal Financial Assistant (Rainy).
+                Current Date: ${year}-${month + 1}-${currentDay}. Month Length: ${daysInMonth} days. Remaining days (including today): ${remainingDays}.
+                Current Status: Total Assets: ${totalAssets.toFixed(2)}元. Alert Threshold: ${this.data.alertThreshold}元.
+                Calculated Budget: Remaining Budget: ${remainingBudget.toFixed(2)}元. Daily Max Spend (to not go below 0): ${dailyMaxSpend.toFixed(2)}元.
+                Recent Transactions (Limit 20):
+                ${transactionsText || 'No recent transactions.'}
+                
+                Task: Answer the user's question or respond to their non-transactional input. Your response must be **brief and concise**. 
+                If the user asks for average daily spending/budget, you MUST show the calculation in the format "A + B = C" or "A / B = C", and explain it simply. 
+                Wrap the final result number (e.g., 12.34) in the HTML tag "<span class='ai-result-highlight'></span>". DO NOT output JSON.
+                User: ${userText}
+                `;
+                
+                const response = await fetch(`${API_URL}?key=${API_KEY}`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ contents: [{ parts: [{ text: prompt }] }] })
+                });
+
+                const result = await response.json();
+                return result.candidates[0].content.parts[0].text.trim();
+            }
+
+            // --- Chat UI ---
+            addHistory(msgObj) {
+                if(!msgObj.id) msgObj.id = Date.now() + Math.random();
+                this.data.chatHistory.push(msgObj);
+                this.saveData();
+            }
+            
+            // 辅助函数：将 AI 文本中的简单 Markdown 转换为 HTML
+            formatAiText(text) {
+                if (!text) return '';
+                let htmlText = text.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+                htmlText = htmlText.replace(/\n/g, '<br>');
+                htmlText = htmlText.replace(/<span class='ai-result-highlight'>(.*?)<\/span>/g, '<span class="ai-result-highlight">$1</span>');
+                return htmlText;
+            }
+
+            renderChatHistory() {
+                const container = document.getElementById('chat-container');
+                container.innerHTML = '';
+                this.data.chatHistory.forEach(msg => {
+                    if (msg.status === 'deleted') return; 
+
+                    const div = document.createElement('div');
+                    div.className = `msg ${msg.role}`;
+                    div.setAttribute('data-id', msg.id);
+                    
+                    let html = `<div class="avatar"><i class="fa-solid ${msg.role === 'user' ? 'fa-leaf' : 'fa-robot'}"></i></div>
+                                <div class="bubble">${this.formatAiText(msg.text)}`;
+                    
+                    if (msg.cardData && msg.status !== 'deleted') { 
+                        let cardDatas = Array.isArray(msg.cardData) ? msg.cardData : [msg.cardData];
+                        
+                        const cardsHtml = cardDatas.map((item, index) => {
+                            const typeColor = item.type==='expense' ? 'var(--text-main)' : 'var(--primary-dark)';
+                            const sign = item.type==='expense' ? '-' : '+';
+                            const displayAmount = Math.abs(parseFloat(item.amount)).toFixed(2);
+                            
+                            const noBalHtml = item.noBalanceUpdate ? 
+                                `<div class="bill-row-nobal" style="margin-bottom: 8px;">
+                                    <span class="bill-label">余额</span>
+                                    <span class="status-no-bal">不扣</span>
+                                </div>` : '';
+                            
+                            return `
+                                <div class="bill-card" style="margin-top:10px; border-left: 5px solid ${item.type==='expense'?'var(--text-main)':'var(--primary)'}">
+                                    <div class="bill-row"><span class="bill-label">分类</span><span class="bill-value">${item.category}</span></div>
+                                    <div class="bill-row"><span class="bill-label">金额</span><span class="bill-value" style="color:${typeColor}">${sign} ${displayAmount}</span></div>
+                                    <div class="bill-row"><span class="bill-label">账户</span><span class="bill-value">${item.account}</span></div>
+                                    ${noBalHtml}
+                                    <div class="bill-remark">${item.note||'无备注'}</div>
+                                </div>
+                            `;
+                        }).join('');
+
+                        if (msg.status === 'pending') {
+                            html += `${cardsHtml}<div class="bill-actions">
+                                    <button class="btn-mini btn-edit" onclick="app.openManualModal('${msg.id}')">修改</button>
+                                    <button class="btn-mini btn-confirm" onclick="app.confirmMultiCard('${msg.id}')">确认${cardDatas.length > 1 ? '全部' : ''}记账</button>
+                                 </div>`;
+                        } else if (msg.status === 'confirmed') {
+                            html += `${cardsHtml}<div class="status-badge status-done"><i class="fa-solid fa-check"></i> 已记账</div>
+                                 <button class="btn-mini btn-revoke" onclick="app.deleteCard('${msg.id}')">撤销并删除</button>`;
+                        }
+                    }
+                    html += `</div>`;
+                    div.innerHTML = html;
+                    
+                    // 绑定长按删除事件
+                    const bubbleEl = div.querySelector('.bubble');
+                    if (bubbleEl) {
+                        bubbleEl.addEventListener('mousedown', (e) => this.startMessageLongPress(e, msg), false);
+                        bubbleEl.addEventListener('touchstart', (e) => this.startMessageLongPress(e, msg), { passive: false });
+                        bubbleEl.addEventListener('mouseup', this.cancelLongPress, false);
+                        bubbleEl.addEventListener('touchend', this.cancelLongPress, false);
+                        
+                        // 确保按钮点击正常（防止长按事件阻止）
+                        div.querySelectorAll('.btn-mini').forEach(btn => {
+                            btn.addEventListener('touchstart', (e) => e.stopPropagation(), { passive: true });
+                            btn.addEventListener('mousedown', (e) => e.stopPropagation(), { passive: true });
+                        });
+                    }
+                    
+                    container.appendChild(div);
+                });
+                this.scrollToBottom();
+            }
+            
+            // 消息长按删除逻辑
+            currentLongPressMessage = null;
+            
+            startMessageLongPress(e, msg) {
+                this.cancelLongPress(); 
+                this.currentLongPressMessage = msg;
+                
+                if (e.type === 'touchstart') {
+                    // 阻止默认行为只用于启动长按计时
+                    const touch = e.touches[0];
+                    this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
+                    e.currentTarget.addEventListener('touchmove', this.checkMovement, { passive: false });
+                }
+                
+                this.longPressTimer = setTimeout(() => {
+                    this.showDeleteMessageConfirm(msg);
+                    this.longPressTimer = null;
+                    if (e.type === 'touchstart') {
+                        e.currentTarget.removeEventListener('touchmove', this.checkMovement);
+                    }
+                }, 700); 
+            }
+            
+            async showDeleteMessageConfirm(msg) {
+                let message = msg.role === 'user' 
+                    ? '确定删除这条您发送的消息吗？'
+                    : (msg.status === 'confirmed' ? '确定撤销该记账记录并删除这条消息吗？' : '确定删除这条 AI 消息吗？');
+                
+                const confirmed = await this.showConfirm(message, true);
+                if (confirmed) {
+                    if (msg.role === 'user') {
+                        this.deleteUserMessage(msg.id);
+                    } else if (msg.role === 'ai') {
+                        if (msg.status === 'confirmed') {
+                             this.deleteCard(msg.id); // 撤销并删除
+                        } else {
+                             this.deleteAIMessage(msg.id); // 仅删除 AI 消息
+                        }
+                    }
+                    this.renderChatHistory();
+                }
+            }
+
+            deleteUserMessage(msgId) {
+                const index = this.data.chatHistory.findIndex(m => m.id == msgId);
+                if (index !== -1) {
+                    this.data.chatHistory.splice(index, 1);
+                    this.saveData();
+                }
+            }
+            
+            deleteAIMessage(msgId) {
+                 const index = this.data.chatHistory.findIndex(m => m.id == msgId);
+                 if (index !== -1) {
+                     this.data.chatHistory.splice(index, 1);
+                     this.saveData();
+                 }
+            }
+            
+            // 检查移动，仅在微小移动时阻止默认行为以保持长按计时
+            checkMovement = (e) => {
+                const touch = e.touches[0];
+                const maxMovement = 20; // 调大移动阈值
+                
+                if (this.longPressTimer) {
+                    const deltaX = Math.abs(touch.clientX - this.longPressTouchStart.x);
+                    const deltaY = Math.abs(touch.clientY - this.longPressTouchStart.y);
+                    
+                    if (deltaX > maxMovement || deltaY > maxMovement) {
+                        this.cancelLongPress();
+                        e.currentTarget.removeEventListener('touchmove', this.checkMovement);
+                    } else {
+                        // 在小范围移动时阻止页面滚动，以保持长按
+                        e.preventDefault(); 
+                    }
+                }
+            }
+
+
+            cancelLongPress = () => {
+                clearTimeout(this.longPressTimer);
+                this.longPressTimer = null;
+                this.currentLongPressTransaction = null;
+                this.currentLongPressMessage = null;
+            }
+
+
+            scrollToBottom() {
+                const container = document.getElementById('chat-container');
+                setTimeout(() => container.scrollTop = container.scrollHeight, 100);
+            }
+
+            showLoading(id) {
+                const container = document.getElementById('chat-container');
+                const div = document.createElement('div');
+                div.className = `msg ai`; div.id = id;
+                div.innerHTML = `<div class="avatar"><i class="fa-solid fa-robot"></i></div><div class="bubble"><span class="typing-dot"></span><span class="typing-dot"></span></div>`;
+                container.appendChild(div);
+                this.scrollToBottom();
+                return id;
+            }
+            
+            removeLoading(id) { 
+                const loadingEl = document.getElementById(id);
+                if(loadingEl) loadingEl.remove();
+            }
+
+            // --- Transactions ---
+            confirmCard(msgId) {
+                const msg = this.data.chatHistory.find(m => m.id == msgId);
+                if (!msg || Array.isArray(msg.cardData)) return this.showAlert('确认失败，请重试');
+                
+                const cardData = msg.cardData;
+                const tId = Date.now() + Math.random();
+                
+                if (!cardData.noBalanceUpdate) {
+                    this.updateAccountBalance(cardData.account, cardData.amount, cardData.type, 'add');
+                }
+
+                this.data.transactions.push({ ...cardData, date: new Date().toISOString(), id: tId });
+                
+                msg.status = 'confirmed';
+                msg.transactionId = tId;
+                this.saveData();
+                this.initUI();
+            }
+
+            confirmMultiCard(msgId) {
+                const msg = this.data.chatHistory.find(m => m.id == msgId);
+                if (!msg) return this.showAlert('确认失败，请重试');
+                
+                const cardDatas = Array.isArray(msg.cardData) ? msg.cardData : [msg.cardData];
+                const transactionIds = [];
+                
+                cardDatas.forEach(cardData => {
+                    const tId = Date.now() + Math.random();
+                    
+                    if (!cardData.noBalanceUpdate) {
+                        this.updateAccountBalance(cardData.account, cardData.amount, cardData.type, 'add');
+                    }
+
+                    this.data.transactions.push({ ...cardData, date: new Date().toISOString(), id: tId });
+                    transactionIds.push(tId);
+                });
+                
+                msg.status = 'confirmed';
+                msg.transactionId = transactionIds.length === 1 ? transactionIds[0] : transactionIds; // 存储 ID 或 ID 数组
+                this.saveData();
+                this.initUI();
+            }
+
+            async deleteCard(msgId) {
+                const chatIndex = this.data.chatHistory.findIndex(m => m.id == msgId);
+                if (chatIndex === -1) return;
+                const msg = this.data.chatHistory[chatIndex];
+
+                const confirmed = await this.showConfirm('确定撤销吗？这条记录和相关聊天都会消失。', true);
+                if(confirmed) {
+                    const cardDatas = Array.isArray(msg.cardData) ? msg.cardData : [msg.cardData];
+                    const transactionIds = Array.isArray(msg.transactionId) ? msg.transactionId : [msg.transactionId].filter(Boolean);
+                    
+                    // 1. 恢复余额
+                    cardDatas.forEach(cardData => {
+                        if (!cardData.noBalanceUpdate) {
+                            this.updateAccountBalance(cardData.account, cardData.amount, cardData.type, 'revert');
+                        }
+                    });
+
+                    // 2. 删除 transactions 列表中的记录
+                    this.data.transactions = this.data.transactions.filter(t => !transactionIds.includes(t.id));
+                    
+                    // 3. 删除用户和 AI 的聊天记录
+                    let userMsgText = msg.userText; 
+                    let userMsgIndex = -1;
+                    
+                    if (userMsgText) {
+                         userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === userMsgText);
+                    } else if (msg.text.startsWith('快捷记账:')) { 
+                        userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.text.replace('快捷记账已确认：', '快捷记账: '));
+                    } else if (msg.text === '手动记账') { 
+                        userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === '手动记账');
+                    }
+
+                    if (userMsgIndex !== -1 && userMsgIndex < chatIndex) {
+                        this.data.chatHistory.splice(userMsgIndex, 1); // 删除用户消息
+                        this.data.chatHistory.splice(chatIndex - 1, 1); // 删除 AI 消息 (索引减 1)
+                    } else {
+                        this.data.chatHistory.splice(chatIndex, 1);
+                    }
+                    
+                    this.saveData();
+                    this.initUI();
+                }
+            }
+
+            updateAccountBalance(accName, amount, type, action) {
+                const acc = this.data.accounts.find(a => a.name === accName);
+                if (!acc) { this.showAlert('账户不存在，可能已被删除'); return; }
+                const val = parseFloat(amount);
+                if (action === 'add') {
+                    if (type === 'expense') acc.balance -= val; else acc.balance += val;
+                } else { // revert
+                    if (type === 'expense') acc.balance += val; else acc.balance -= val;
+                }
+            }
+
+            // --- Manual Modal & Multi-Edit Logic ---
+            currentMultiEditData = null; // 存储当前正在编辑的多个子账单数组
+            currentMultiEditIndex = 0;   // 当前正在编辑的子账单索引
+            currentEditMsgId = null;     // 原始 AI 消息 ID
+            
+            openManualModal(editMsgId = null) {
+                const modal = document.getElementById('entry-modal');
+                const navControls = document.getElementById('entry-nav-controls');
+                
+                modal.classList.add('active');
+                this.currentEditId = editMsgId;
+                
+                let data = { type: 'expense', amount: 0.00, note: '', category: '', account: this.data.defaultAccount || '', noBalanceUpdate: false };
+                
+                // 1. 初始化多笔修改状态
+                if (editMsgId) {
+                    const msg = this.data.chatHistory.find(m => m.id == editMsgId);
+                    if (msg) {
+                        // 如果是多笔账单，将 cardData 复制并存储，保留 originalIndex
+                        this.currentMultiEditData = Array.isArray(msg.cardData) 
+                            ? msg.cardData.map((d, i) => ({ ...d, originalIndex: i })) 
+                            : [msg.cardData];
+                        
+                        this.currentMultiEditIndex = 0;
+                        navControls.style.display = this.currentMultiEditData.length > 1 ? 'flex' : 'none';
+                        document.getElementById('entry-title').innerText = `修改 (${this.currentMultiEditData.length} 笔)`;
+                    }
+                } else {
+                    this.currentMultiEditData = null;
+                    this.currentMultiEditIndex = 0;
+                    navControls.style.display = 'none';
+                    document.getElementById('entry-title').innerText = "记一笔";
+                }
+                
+                // 2. 加载数据
+                if (this.currentMultiEditData && this.currentMultiEditData.length > 0) {
+                     // 确保在加载前设置了正确的类型，防止类型芯片错乱
+                     this.setFormType(this.currentMultiEditData[this.currentMultiEditIndex].type);
+                     this.loadEntryData(this.currentMultiEditData[this.currentMultiEditIndex]);
+                } else {
+                     this.loadEntryData(data);
+                }
+                
+                // 3. 重置保存逻辑
+                const saveBtn = document.querySelector('#entry-modal .btn-block');
+                saveBtn.onclick = () => this.saveManualEntry();
+            }
+            
+            // 加载数据到表单
+            loadEntryData(data) {
+                data.amount = parseFloat(data.amount) || 0;
+                
+                // 修正 Bug：确保设置正确的类型
+                this.setFormType(data.type || 'expense');
+                
+                document.getElementById('form-amount').value = data.amount.toFixed(2);
+                document.getElementById('form-note').value = data.note || '';
+                
+                // 设置不扣余额选项
+                const balanceChips = document.querySelector('#entry-modal .form-group .chips').children;
+                if(data.noBalanceUpdate) {
+                    balanceChips[0].classList.remove('active');
+                    balanceChips[1].classList.add('active');
+                } else {
+                    balanceChips[0].classList.add('active');
+                    balanceChips[1].classList.remove('active');
+                }
+                
+                // 渲染分类和账户，并确保选中项是当前数据中的值
+                this.renderCategories(data.type || 'expense', data.category);
+                const accNames = this.data.accounts.map(a=>a.name);
+                this.renderChips('account-chips', accNames, data.account);
+                
+                this.updateNavControls();
+            }
+            
+            // 更新翻页状态
+            updateNavControls() {
+                 if (this.currentMultiEditData && this.currentMultiEditData.length > 1) {
+                    const total = this.currentMultiEditData.length;
+                    const index = this.currentMultiEditIndex;
+                    document.getElementById('entry-index-status').innerText = `${index + 1}/${total}`;
+                    document.getElementById('entry-nav-prev').disabled = index === 0;
+                    document.getElementById('entry-nav-next').disabled = index === total - 1;
+                 }
+            }
+            
+            // 翻页操作
+            navigateEntry(direction) {
+                if (!this.currentMultiEditData) return;
+
+                // 1. 保存当前页面的修改到 currentMultiEditData
+                this.saveCurrentFormToMultiEditData();
+
+                // 2. 切换索引
+                let newIndex = this.currentMultiEditIndex + direction;
+                if (newIndex >= 0 && newIndex < this.currentMultiEditData.length) {
+                    this.currentMultiEditIndex = newIndex;
+                    
+                    // 3. 确保在加载前设置了正确的类型，防止类型芯片错乱
+                    const nextData = this.currentMultiEditData[newIndex];
+                    this.setFormType(nextData.type);
+                    
+                    this.loadEntryData(nextData);
+                }
+            }
+            
+            // 保存当前表单数据到 currentMultiEditData
+            saveCurrentFormToMultiEditData() {
+                if (!this.currentMultiEditData) return;
+                
+                const type = document.querySelector('#type-select .active').getAttribute('data-type');
+                const amount = parseFloat(document.getElementById('form-amount').value);
+                const note = document.getElementById('form-note').value;
+                const catEl = document.querySelector('#category-chips .active');
+                const accEl = document.querySelector('#account-chips .active');
+                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+                
+                const currentData = this.currentMultiEditData[this.currentMultiEditIndex];
+                
+                this.currentMultiEditData[this.currentMultiEditIndex] = {
+                    ...currentData, 
+                    type, 
+                    amount: amount || 0, 
+                    category: catEl ? catEl.innerText : '其他', 
+                    account: accEl ? accEl.innerText : 'Unknown', 
+                    note, 
+                    noBalanceUpdate
+                };
+            }
+
+
+            setFormType(type) {
+                const chips = document.getElementById('type-select').children;
+                
+                chips[0].classList.remove('active');
+                chips[1].classList.remove('active');
+
+                if (type === 'expense') {
+                    chips[0].classList.add('active');
+                } else if (type === 'income') {
+                    chips[1].classList.add('active');
+                }
+
+                // 重新渲染分类芯片
+                // 如果是多笔编辑状态，先尝试保存当前表单的类型，以确保切换类型后加载正确的分类列表
+                if (this.currentMultiEditData) {
+                    // 当从 '支出' 切换到 '收入' 时，必须重新渲染芯片，但此时分类可能不同。
+                    // 为了保证修改流程的连贯性，这里我们只在非多笔编辑或手动强制切换类型时才重新渲染分类
+                    // 但在多笔编辑中，类型是数据驱动的，loadEntryData 会调用这个函数，所以要确保分类也根据数据类型加载
+                    const activeCat = this.currentMultiEditData 
+                        ? this.currentMultiEditData[this.currentMultiEditIndex].category 
+                        : document.querySelector('#category-chips .active')?.innerText;
+                    this.renderCategories(type, activeCat);
+                } else {
+                    const activeCat = document.querySelector('#category-chips .active')?.innerText;
+                    this.renderCategories(type, activeCat);
+                }
+            }
+
+            renderCategories(type, activeCat = null) {
+                const container = document.getElementById('category-chips');
+                container.innerHTML = '';
+                const list = [...this.defaultCats[type], ...this.data.customCategories[type]];
+                
+                if (!activeCat && list.length > 0) activeCat = list[0];
+                if (activeCat && !list.includes(activeCat)) list.unshift(activeCat); 
+
+                list.forEach(cat => {
+                    const chip = document.createElement('div');
+                    chip.className = `chip ${cat === activeCat ? 'active' : ''}`;
+                    chip.innerText = cat;
+                    chip.onclick = () => {
+                        Array.from(container.children).forEach(c => c.classList.remove('active'));
+                        chip.classList.add('active');
+                    };
+                    container.appendChild(chip);
+                });
+
+                const addChip = document.createElement('div');
+                addChip.className = 'chip chip-add';
+                addChip.innerHTML = '<i class="fa-solid fa-plus"></i>';
+                addChip.onclick = () => this.addCustomCategory(type);
+                container.appendChild(addChip);
+            }
+
+            async addCustomCategory(type) {
+                const name = await this.showPrompt("新建分类", "请输入分类名称：");
+                if (name) {
+                    const categoryList = this.data.customCategories[type];
+                    if (!this.defaultCats[type].includes(name) && !categoryList.includes(name)) {
+                        categoryList.push(name);
+                        this.saveData();
+                        this.renderCategories(type, name);
+                    } else if (this.defaultCats[type].includes(name) || categoryList.includes(name)) {
+                        this.showAlert("该分类已存在！");
+                    }
+                }
+            }
+
+            renderChips(containerId, items, activeItem) {
+                const container = document.getElementById(containerId);
+                container.innerHTML = '';
+                
+                if (activeItem && !items.includes(activeItem)) items.unshift(activeItem);
+                
+                items.forEach(item => {
+                    const chip = document.createElement('div');
+                    chip.className = `chip ${item === activeItem ? 'active' : ''}`;
+                    chip.innerText = item;
+                    chip.onclick = () => {
+                        Array.from(container.children).forEach(c => c.classList.remove('active'));
+                        chip.classList.add('active');
+                    };
+                    container.appendChild(chip);
+                });
+                
+                if (items.length === 0) {
+                     container.innerHTML = '<div class="chip" style="color:var(--danger-color); border-style:dashed;">请先添加账户</div>';
+                }
+            }
+
+            async saveManualEntry() {
+                // 如果是多笔修改，先保存当前数据，然后执行批量保存
+                if (this.currentMultiEditData) {
+                    this.saveCurrentFormToMultiEditData(); // 确保最后一笔也保存了
+                    return this.saveMultiEditToHistory();
+                }
+                
+                // 单笔保存逻辑 (用于手动记账和单笔 AI 消息的修改)
+                const type = document.querySelector('#type-select .active').getAttribute('data-type');
+                const amount = parseFloat(document.getElementById('form-amount').value);
+                const note = document.getElementById('form-note').value;
+                const catEl = document.querySelector('#category-chips .active');
+                const accEl = document.querySelector('#account-chips .active');
+                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+
+                if (!amount || amount <= 0) return this.showAlert('请输入有效金额');
+                if (!accEl) {
+                    await this.showAlert('请先添加账户');
+                    this.openAddAccountModal();
+                    return;
+                }
+
+                const newData = { type, amount, category: catEl ? catEl.innerText : '其他', account: accEl.innerText, note, noBalanceUpdate };
+
+                if (this.currentEditId) {
+                    const msg = this.data.chatHistory.find(m => m.id == this.currentEditId);
+                    if (msg) {
+                        // 1. 撤销旧交易对余额的影响
+                        let oldCardData = Array.isArray(msg.cardData) ? msg.cardData[0] : msg.cardData; // 如果是单笔
+                        if (msg.status === 'confirmed') {
+                             if (!oldCardData.noBalanceUpdate) {
+                                this.updateAccountBalance(oldCardData.account, oldCardData.amount, oldCardData.type, 'revert');
+                             }
+                             // 移除旧 transaction
+                             const transactionId = msg.transactionId;
+                             this.data.transactions = this.data.transactions.filter(t => t.id !== transactionId);
+                        }
+
+                        // 2. 应用新交易对余额的影响，并创建新的 transaction
+                        const newTransactionId = Date.now() + Math.random();
+                        if (!newData.noBalanceUpdate) {
+                            this.updateAccountBalance(newData.account, newData.amount, newData.type, 'add');
+                        }
+                        this.data.transactions.push({ ...newData, date: new Date().toISOString(), id: newTransactionId });
+                        
+                        // 3. 更新聊天记录
+                        msg.cardData = newData; 
+                        msg.transactionId = newTransactionId;
+                        msg.text = '已修改为：'; 
+                        msg.status = 'confirmed'; 
+                    }
+                } else {
+                    this.addHistory({ role: 'user', text: '手动记账' });
+                    this.addHistory({ role: 'ai', text: '手动记账已确认：', cardData: newData, status: 'confirmed', userText: '手动记账' }); 
+                    this.confirmCard(this.data.chatHistory[this.data.chatHistory.length-1].id);
+                }
+                this.saveData();
+                this.initUI();
+                this.closeModal('entry-modal');
+            }
+            
+            // 批量保存修改后的合并账单
+            saveMultiEditToHistory() {
+                const msg = this.data.chatHistory.find(m => m.id == this.currentEditId);
+                if (!msg || !this.currentMultiEditData) return this.showAlert("多笔修改保存失败");
+                
+                // 1. 撤销所有旧交易对余额的影响 (如果已确认)
+                if (msg.status === 'confirmed') {
+                    const oldTransactionIds = Array.isArray(msg.transactionId) ? msg.transactionId : [msg.transactionId];
+                    const oldCardDatas = Array.isArray(msg.cardData) ? msg.cardData : [msg.cardData];
+                    
+                    oldCardDatas.forEach(oldData => {
+                        if (!oldData.noBalanceUpdate) {
+                            this.updateAccountBalance(oldData.account, oldData.amount, oldData.type, 'revert');
+                        }
+                    });
+                    // 从 transactions 中移除所有旧记录
+                    this.data.transactions = this.data.transactions.filter(t => !oldTransactionIds.includes(t.id));
+                }
+
+                // 2. 应用所有新交易对余额的影响，并创建新的 transactions
+                const newTransactionIds = [];
+                this.currentMultiEditData.forEach(newData => {
+                    // 确保每个修改后的项目都有唯一的 ID
+                    const newId = Date.now() + Math.random(); 
+                    if (!newData.noBalanceUpdate) {
+                        this.updateAccountBalance(newData.account, newData.amount, newData.type, 'add');
+                    }
+                    this.data.transactions.push({ ...newData, date: new Date().toISOString(), id: newId });
+                    newTransactionIds.push(newId);
+                });
+
+                // 3. 更新聊天记录
+                const totalExpense = this.currentMultiEditData.filter(i=>i.type==='expense').reduce((sum, item) => sum + parseFloat(item.amount), 0);
+                const totalIncome = this.currentMultiEditData.filter(i=>i.type==='income').reduce((sum, item) => sum + parseFloat(item.amount), 0);
+                const totalNet = totalIncome - totalExpense;
+                
+                msg.cardData = this.currentMultiEditData;
+                msg.transactionId = newTransactionIds;
+                msg.text = `已修改并重新确认 ${this.currentMultiEditData.length} 笔交易，总净额：${totalNet.toFixed(2)}。`;
+                msg.status = 'confirmed';
+
+                this.saveData();
+                this.initUI();
+                this.closeModal('entry-modal');
+            }
+
+
+            // --- Quick Reply Logic ---
+            renderQuickReplies() {
+                const container = document.getElementById('quick-reply-area');
+                container.innerHTML = '';
+                
+                // 渲染所有快捷指令（不包括新建按钮，新建按钮放在外层）
+                const groupedQR = this.data.quickReplies.reduce((acc, qr) => {
+                    (acc[qr.category] = acc[qr.category] || []).push(qr);
+                    return acc;
+                }, {});
+
+                Object.entries(groupedQR).forEach(([category, list]) => {
+                    const chip = document.createElement('div');
+                    chip.className = 'qr-chip';
+                    
+                    if (list.length === 1) {
+                        chip.innerText = list[0].name;
+                        chip.onclick = () => this.executeQuickReply(list[0]);
+                    } else {
+                        chip.innerText = category;
+                        chip.onclick = () => this.openQuickReplyGroupModal(category, list);
+                    }
+                    container.appendChild(chip);
+                });
+                
+                // 添加新建按钮
+                const addBtn = document.createElement('div');
+                addBtn.className = 'qr-chip qr-add';
+                addBtn.innerHTML = '<i class="fa-solid fa-plus"></i> 新建快捷指令';
+                addBtn.onclick = () => this.openQuickReplyModal();
+                container.appendChild(addBtn);
+            }
+
+            openQuickReplyModal(qr = null) {
+                this.currentEditQR = qr;
+                const modal = document.getElementById('quick-reply-modal');
+                document.getElementById('qr-modal-title').innerText = qr ? '编辑快捷指令' : '创建快捷指令';
+                
+                document.getElementById('qr-name').value = qr ? qr.name : '';
+                document.getElementById('qr-amount').value = qr ? qr.amount.toFixed(2) : '';
+                document.getElementById('qr-no-balance').checked = qr ? qr.noBalanceUpdate : false;
+                
+                const typeChips = document.getElementById('qr-type-select').children;
+                if (qr && qr.type === 'income') {
+                    typeChips[0].classList.remove('active');
+                    typeChips[1].classList.add('active');
+                } else {
+                    typeChips[0].classList.add('active');
+                    typeChips[1].classList.remove('active');
+                }
+                
+                this.populateQRSelectors(qr);
+                
+                modal.classList.add('active');
+            }
+            
+            populateQRSelectors(qr = null) {
+                const catSelector = document.getElementById('qr-category');
+                const accSelector = document.getElementById('qr-account');
+                catSelector.innerHTML = '';
+                accSelector.innerHTML = '';
+
+                const selectedType = document.querySelector('#qr-type-select .active').getAttribute('data-type') || 'expense';
+                const allCats = [...this.defaultCats[selectedType], ...this.data.customCategories[selectedType]];
+                
+                // Category Selector
+                allCats.forEach(cat => {
+                    const option = document.createElement('option');
+                    option.value = cat;
+                    option.innerText = cat;
+                    if (qr && qr.category === cat) option.selected = true;
+                    else if (!qr && !catSelector.querySelector('option[selected]') && allCats.length > 0) {
+                         option.selected = true;
+                    }
+                    catSelector.appendChild(option);
+                });
+                
+                // Account Selector
+                this.data.accounts.forEach(acc => {
+                    const option = document.createElement('option');
+                    option.value = acc.name;
+                    option.innerText = acc.name;
+                    if (qr && qr.account === acc.name) option.selected = true;
+                    else if (!qr && acc.name === this.data.defaultAccount && !accSelector.querySelector('option[selected]')) option.selected = true;
+                    accSelector.appendChild(option);
+                });
+                
+                // 如果没有账户，添加一个默认提示
+                if (this.data.accounts.length === 0) {
+                     accSelector.innerHTML = '<option value="">请先添加账户</option>';
+                     accSelector.disabled = true;
+                } else {
+                     accSelector.disabled = false;
+                }
+            }
+            
+            async saveQuickReply() {
+                const name = document.getElementById('qr-name').value.trim();
+                const type = document.querySelector('#qr-type-select .active').getAttribute('data-type');
+                const amount = parseFloat(document.getElementById('qr-amount').value);
+                const category = document.getElementById('qr-category').value;
+                const account = document.getElementById('qr-account').value;
+                const noBalanceUpdate = document.getElementById('qr-no-balance').checked;
+                
+                if (!name || !category) return this.showAlert("名称和分类不能为空");
+                if (!amount || amount <= 0) return this.showAlert("请输入有效金额");
+                if (!account) return this.showAlert("请选择账户");
+                if (this.data.accounts.length === 0) return this.showAlert("请先添加账户");
+
+                const newQR = { id: this.currentEditQR ? this.currentEditQR.id : Date.now() + Math.random(), name, type, amount, category, account, noBalanceUpdate, note: name };
+
+                if (this.currentEditQR) {
+                    const index = this.data.quickReplies.findIndex(qr => qr.id === this.currentEditQR.id);
+                    this.data.quickReplies[index] = newQR;
+                } else {
+                    this.data.quickReplies.push(newQR);
+                }
+
+                this.saveData();
+                this.renderQuickReplies();
+                this.closeModal('quick-reply-modal');
+            }
+            
+            async executeQuickReply(qr) {
+                const confirmed = await this.showConfirm(`一键记账 [${qr.name}] ${qr.type==='expense'?'-':'+'}${qr.amount.toFixed(2)} 元？`);
+                if (!confirmed) return;
+
+                const cardData = { 
+                    type: qr.type, 
+                    amount: qr.amount, 
+                    category: qr.category, 
+                    account: qr.account, 
+                    note: qr.note || qr.name, 
+                    noBalanceUpdate: qr.noBalanceUpdate || false
+                };
+
+                this.addHistory({ role: 'user', text: `快捷记账: ${qr.name}` });
+                this.addHistory({ role: 'ai', text: '快捷记账已确认：', cardData: cardData, status: 'confirmed', userText: `快捷记账: ${qr.name}` }); 
+                this.confirmCard(this.data.chatHistory[this.data.chatHistory.length-1].id);
+            }
+            
+            openQuickReplyGroupModal(category, list) {
+                const modal = document.getElementById('qr-group-modal');
+                document.getElementById('qr-group-title').innerText = category + " (快捷指令)";
+                const container = document.getElementById('qr-group-list');
+                container.innerHTML = '';
+
+                list.forEach(qr => {
+                    const div = document.createElement('div');
+                    div.className = 'stat-item';
+                    div.onclick = () => { this.closeModal('qr-group-modal'); this.executeQuickReply(qr); };
+                    div.oncontextmenu = (e) => { e.preventDefault(); this.showQRContextMenu(e, qr); }; // 长按菜单
+
+                    const noBalDesc = qr.noBalanceUpdate ? '不扣余额' : '扣余额';
+
+                    div.innerHTML = `
+                        <div class="stat-left">
+                            <div class="stat-cat">${qr.name}</div>
+                            <div class="stat-note">${qr.account} - ${noBalDesc}</div>
+                        </div>
+                        <div class="stat-right">
+                            <div class="stat-amt ${qr.type==='expense'?'expense-amt':'income-amt'}">${qr.type==='expense'?'-':'+'}${qr.amount.toFixed(2)}</div>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+
+                modal.classList.add('active');
+            }
+            
+            showQRContextMenu(event, qr) {
+                event.preventDefault(); 
+                this.showDialog({
+                    title: `快捷指令操作: ${qr.name}`,
+                    message: "请选择操作：",
+                    extraButtons: [
+                        { text: '删除', action: 'delete', className: 'btn-dialog-delete' }
+                    ],
+                    cancelText: "取消",
+                    confirmText: "编辑",
+                }).then(result => {
+                    if(result === true) {
+                        this.closeModal('qr-group-modal');
+                        this.openQuickReplyModal(qr);
+                    } else if (result === 'delete') {
+                        this.deleteQuickReply(qr.id);
+                        this.closeModal('qr-group-modal');
+                    }
+                });
+            }
+            
+            async deleteQuickReply(id) {
+                const confirmed = await this.showConfirm("确定删除该快捷指令吗？", true);
+                if (confirmed) {
+                    this.data.quickReplies = this.data.quickReplies.filter(qr => qr.id !== id);
+                    this.saveData();
+                    this.renderQuickReplies();
+                }
+            }
+
+
+            // --- Settings Modal ---
+            openSettingsModal() {
+                const modal = document.getElementById('settings-modal');
+                modal.classList.add('active');
+                document.getElementById('alert-threshold-input').value = this.data.alertThreshold;
+                this.renderSettingsList();
+            }
+
+            renderSettingsList() {
+                const container = document.getElementById('settings-list');
+                container.innerHTML = '';
+                
+                this.data.accounts.forEach((acc, index) => {
+                    const div = document.createElement('div');
+                    div.className = 'acc-setting-card';
+                    div.innerHTML = `
+                        <div class="acc-header">
+                            <span class="acc-name">${acc.name}</span>
+                            <i class="fa-solid fa-trash acc-del-btn" onclick="app.deleteAccount(${index})"></i>
+                        </div>
+                        <div class="acc-row">
+                            <span class="acc-label">当前余额</span>
+                            <input type="number" class="acc-input" value="${acc.balance.toFixed(2)}" onchange="app.updateAccData(${index}, 'balance', this.value)">
+                        </div>
+                        <div class="acc-row">
+                            <span class="acc-label">重置目标</span>
+                            <input type="number" class="acc-input" value="${acc.targetBalance.toFixed(2)}" onchange="app.updateAccData(${index}, 'targetBalance', this.value)">
+                        </div>
+                        <div class="switch-row">
+                            <span class="switch-desc">每月1号重置为目标</span>
+                            <label class="switch">
+                                <input type="checkbox" ${acc.autoReset ? 'checked' : ''} onchange="app.updateAccData(${index}, 'autoReset', this.checked)">
+                                <span class="slider"></span>
+                            </label>
+                        </div>
+                    `;
+                    container.appendChild(div);
+                });
+            }
+
+            updateAccData(index, field, value) {
+                if (field === 'balance' || field === 'targetBalance') value = parseFloat(value) || 0;
+                this.data.accounts[index][field] = value;
+                this.saveData();
+                this.updateHeader();
+            }
+            
+            updateAlertThreshold(value) {
+                this.data.alertThreshold = parseFloat(value) || 0;
+                this.saveData();
+                this.updateHeader();
+            }
+
+            async deleteAccount(index) {
+                const confirmed = await this.showConfirm(`确定要删除 [${this.data.accounts[index].name}] 吗？`, true);
+                if (confirmed) {
+                    this.data.accounts.splice(index, 1);
+                    this.renderSettingsList();
+                    this.saveData();
+                    this.updateHeader();
+                }
+            }
+
+            async confirmResetAllData() {
+                const confirmed = await this.showConfirm("⚠️ 警告：要清空所有数据重新开始吗？", true);
+                if(confirmed) {
+                    localStorage.removeItem('rainy_data');
+                    location.reload();
+                }
+            }
+
+            // --- Stats Modal ---
+            openStatsModal() {
+                const modal = document.getElementById('stats-modal');
+                modal.classList.add('active');
+                this.populateMonthSelector();
+                
+                const now = new Date();
+                const currentMonthKey = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+                
+                const selector = document.getElementById('month-selector');
+                if ([...selector.options].some(opt => opt.value === currentMonthKey)) {
+                    selector.value = currentMonthKey;
+                } else if (selector.options.length > 0) {
+                     selector.value = selector.options[0].value;
+                }
+                
+                this.renderStatsList(selector.value || currentMonthKey);
+            }
+            
+            populateMonthSelector() {
+                const selector = document.getElementById('month-selector');
+                selector.innerHTML = '';
+                
+                const allMonths = new Set();
+                this.data.transactions.forEach(t => {
+                    const date = new Date(t.date);
+                    const monthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    allMonths.add(monthKey);
+                });
+                
+                const sortedMonths = Array.from(allMonths).sort().reverse();
+                
+                sortedMonths.forEach(monthKey => {
+                    const option = document.createElement('option');
+                    option.value = monthKey;
+                    option.innerText = monthKey.replace('-', '年') + '月';
+                    selector.appendChild(option);
+                });
+            }
+
+            renderStatsList(monthKey) {
+                const container = document.getElementById('stats-list-container');
+                container.innerHTML = '';
+                
+                document.getElementById('stats-title-month').innerText = monthKey.replace('-', '年') + '月';
+
+                const filteredList = this.data.transactions.filter(t => {
+                    const date = new Date(t.date);
+                    const tMonthKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}`;
+                    return tMonthKey === monthKey;
+                }).sort((a, b) => new Date(b.date) - new Date(a.date)); 
+
+                if (filteredList.length === 0) {
+                    container.innerHTML = '<div style="text-align:center;color:#999;padding:40px;">本月暂无记录</div>';
+                    return;
+                }
+
+                const groupedByDay = filteredList.reduce((groups, t) => {
+                    const date = new Date(t.date);
+                    const dayKey = `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+                    (groups[dayKey] = groups[dayKey] || []).push(t);
+                    return groups;
+                }, {});
+
+                Object.keys(groupedByDay).sort().reverse().forEach(dayKey => {
+                    const groupDiv = document.createElement('div');
+                    groupDiv.className = 'stats-day-group';
+                    
+                    const date = new Date(dayKey);
+                    const dateHeader = document.createElement('div');
+                    dateHeader.className = 'stats-date-header';
+                    dateHeader.innerText = `${date.getMonth()+1}月${date.getDate()}日`;
+                    groupDiv.appendChild(dateHeader);
+
+                    groupedByDay[dayKey].forEach(t => {
+                        const date = new Date(t.date);
+                        const timeStr = `${String(date.getHours()).padStart(2,'0')}:${String(date.getMinutes()).padStart(2,'0')}`;
+                        
+                        const div = document.createElement('div');
+                        div.className = 'stat-item';
+                        div.setAttribute('data-tid', t.id);
+                        
+                        div.addEventListener('mousedown', (e) => this.startLongPress(e, t), false);
+                        div.addEventListener('touchstart', (e) => this.startLongPress(e, t), { passive: false });
+                        
+                        div.addEventListener('mouseup', this.cancelLongPress, false);
+                        div.addEventListener('touchend', this.cancelLongPress, false);
+
+
+                        div.innerHTML = `
+                            <div class="stat-left">
+                                <div class="stat-cat">${t.category} <span style="font-weight:normal;font-size:12px;color:#999">(${t.account})</span></div>
+                                <div class="stat-note">${t.note || ''}</div>
+                            </div>
+                            <div class="stat-right">
+                                <div class="stat-amt ${t.type==='expense'?'expense-amt':'income-amt'}">${t.type==='expense'?'-':'+'}${t.amount.toFixed(2)}</div>
+                                <div class="stat-date">${timeStr}</div>
+                            </div>
+                        `;
+                        groupDiv.appendChild(div);
+                    });
+                    container.appendChild(groupDiv);
+                });
+            }
+            
+            // 长按事件处理 (账单明细)
+            longPressTimer = null;
+            currentLongPressTransaction = null;
+            longPressTouchStart = { x: 0, y: 0 };
+            
+            startLongPress(e, t) {
+                this.cancelLongPress(); 
+                this.currentLongPressTransaction = t;
+                
+                if (e.type === 'touchstart') {
+                    // 阻止默认行为只用于启动长按计时
+                    const touch = e.touches[0];
+                    this.longPressTouchStart = { x: touch.clientX, y: touch.clientY };
+                    e.currentTarget.addEventListener('touchmove', this.checkMovement, { passive: false });
+                }
+                
+                this.longPressTimer = setTimeout(() => {
+                    this.showStatsContextMenu(e, this.currentLongPressTransaction);
+                    this.longPressTimer = null;
+                    if (e.type === 'touchstart') {
+                        e.currentTarget.removeEventListener('touchmove', this.checkMovement);
+                    }
+                }, 700); 
+            }
+            
+            checkMovement = (e) => {
+                const touch = e.touches[0];
+                const maxMovement = 20; // 调大移动阈值
+                
+                if (this.longPressTimer) {
+                    const deltaX = Math.abs(touch.clientX - this.longPressTouchStart.x);
+                    const deltaY = Math.abs(touch.clientY - this.longPressTouchStart.y);
+                    
+                    if (deltaX > maxMovement || deltaY > maxMovement) {
+                        this.cancelLongPress();
+                        e.currentTarget.removeEventListener('touchmove', this.checkMovement);
+                    } else {
+                        e.preventDefault(); 
+                    }
+                }
+            }
+
+
+            cancelLongPress = () => {
+                clearTimeout(this.longPressTimer);
+                this.longPressTimer = null;
+                this.currentLongPressTransaction = null;
+                this.currentLongPressMessage = null;
+            }
+
+            async showStatsContextMenu(event, transaction) {
+                const transactionId = transaction.id;
+
+                const action = await this.showDialog({
+                    title: `账单操作: ${transaction.category}`,
+                    message: "请选择操作：",
+                    extraButtons: [
+                        { text: '删除', action: 'delete', className: 'btn-dialog-delete' }
+                    ],
+                    cancelText: "取消",
+                    confirmText: "编辑",
+                });
+
+                if(action === true) {
+                    this.closeModal('stats-modal');
+                    this.openTransactionEditModal(transactionId);
+
+                } else if(action === 'delete') {
+                    const confirmed = await this.showConfirm("确定要删除这条账单吗？此操作会影响账户余额。", true);
+                    if (confirmed) {
+                        this.deleteTransaction(transactionId, transaction.account, transaction.amount, transaction.type, transaction.noBalanceUpdate);
+                        this.renderStatsList(document.getElementById('month-selector').value); 
+                    }
+                }
+            }
+
+            // 为了支持 Stats Modal 的编辑功能，需要一个专门用于编辑 transaction 的 modal，或者复用 entry-modal
+            async openTransactionEditModal(transactionId) {
+                const transaction = this.data.transactions.find(t => t.id === transactionId);
+                if (!transaction) return this.showAlert('账单不存在');
+                
+                this.openManualModal(); 
+
+                document.getElementById('entry-title').innerText = "修改账单";
+                this.currentEditTransactionId = transactionId;
+                
+                this.currentMultiEditData = [transaction];
+                this.currentMultiEditIndex = 0;
+                
+                this.loadEntryData(transaction);
+                
+                const saveBtn = document.querySelector('#entry-modal .btn-block');
+                saveBtn.onclick = () => this.saveEditedTransaction();
+            }
+            
+            async saveEditedTransaction() {
+                // 单笔交易从账单明细修改的逻辑
+                const transactionId = this.currentEditTransactionId;
+                const oldTransaction = this.data.transactions.find(t => t.id === transactionId);
+                
+                const type = document.querySelector('#type-select .active').getAttribute('data-type');
+                const amount = parseFloat(document.getElementById('form-amount').value);
+                const note = document.getElementById('form-note').value;
+                const catEl = document.querySelector('#category-chips .active');
+                const accEl = document.querySelector('#account-chips .active');
+                const noBalanceUpdate = document.querySelector('#entry-modal .form-group .chips').children[1].classList.contains('active');
+
+                if (!amount || amount <= 0) return this.showAlert('请输入有效金额');
+                if (!accEl) return this.showAlert('请选择账户');
+
+                const newData = { 
+                    type, amount, category: catEl ? catEl.innerText : '其他', 
+                    account: accEl.innerText, note, noBalanceUpdate, 
+                    date: oldTransaction.date, id: oldTransaction.id 
+                };
+                
+                // 1. 撤销旧交易对余额的影响
+                if (!oldTransaction.noBalanceUpdate) {
+                    this.updateAccountBalance(oldTransaction.account, oldTransaction.amount, oldTransaction.type, 'revert');
+                }
+                
+                // 2. 应用新交易对余额的影响
+                if (!newData.noBalanceUpdate) {
+                    this.updateAccountBalance(newData.account, newData.amount, newData.type, 'add');
+                }
+                
+                // 3. 更新 transactions 列表
+                const tIndex = this.data.transactions.findIndex(t => t.id === transactionId);
+                if (tIndex !== -1) {
+                    this.data.transactions[tIndex] = newData;
+                }
+                
+                this.saveData();
+                this.initUI();
+                this.closeModal('entry-modal');
+                this.renderStatsList(document.getElementById('month-selector').value); 
+            }
+
+            deleteTransaction(transactionId, accName, amount, type, noBalanceUpdate) {
+                // 1. 恢复余额
+                if (!noBalanceUpdate) {
+                    this.updateAccountBalance(accName, amount, type, 'revert');
+                }
+                
+                // 2. 删除 transaction
+                this.data.transactions = this.data.transactions.filter(t => t.id !== transactionId);
+                
+                // 3. 删除 chatHistory 中的关联项
+                const chatIndex = this.data.chatHistory.findIndex(m => 
+                    m.transactionId === transactionId || (Array.isArray(m.transactionId) && m.transactionId.includes(transactionId))
+                );
+                
+                if (chatIndex !== -1) {
+                    const msg = this.data.chatHistory[chatIndex];
+                    
+                    if (Array.isArray(msg.transactionId)) { // 多笔交易
+                        const newIds = msg.transactionId.filter(id => id !== transactionId);
+                        if (newIds.length === 0) {
+                            let userMsgIndex = -1;
+                            if (msg.userText) { userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.userText); }
+                            if (userMsgIndex !== -1) this.data.chatHistory.splice(userMsgIndex, 1);
+                            this.data.chatHistory.splice(chatIndex, 1);
+                        } else {
+                            msg.transactionId = newIds; 
+                             if (Array.isArray(msg.cardData)) {
+                                 msg.cardData = msg.cardData.filter(d => !d.id || d.id !== transactionId);
+                             }
+                        }
+                    } else {
+                        // 单笔交易，删除 AI 消息和关联的用户消息
+                        let userMsgIndex = -1;
+                        if (msg.userText) { 
+                            userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.userText);
+                        } else if (msg.text.startsWith('快捷记账:')) {
+                            userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === msg.text.replace('快捷记账已确认：', '快捷记账: '));
+                        } else if (msg.text === '手动记账') {
+                            userMsgIndex = this.data.chatHistory.findIndex(m => m.role === 'user' && m.text === '手动记账');
+                        }
+                        
+                        if (userMsgIndex !== -1) this.data.chatHistory.splice(userMsgIndex, 1);
+                        this.data.chatHistory.splice(chatIndex, 1);
+                    }
+                }
+
+
+                this.saveData();
+                this.updateHeader();
+                this.renderChatHistory();
+            }
+
+            closeModal(id) { 
+                document.getElementById(id).classList.remove('active'); 
+                this.currentEditId = null; 
+                this.currentEditTransactionId = null; 
+                this.currentMultiEditData = null; // 清理多笔修改状态
+                this.currentMultiEditIndex = 0;
+            }
+        }
+
+        const app = new App();
+    </script>
+</body>
+</html>
